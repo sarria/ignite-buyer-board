@@ -21,8 +21,9 @@ async function connectDb() {
 }
 
 async function getDb() {
-  if (!db) throw new Error('DB not initialized. Call connectDb() first.');
-  return db;
+  // Lazily connect so serverless invocations (no startup connectDb) work too.
+  if (db) return db;
+  return connectDb();
 }
 
 async function closeDb() {

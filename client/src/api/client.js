@@ -1,7 +1,9 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
+  // Relative '/api' works in production (same origin on Vercel) and in dev
+  // (Vite proxies /api → http://localhost:3001 per vite.config.js).
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
 });
 
