@@ -1,0 +1,24 @@
+{
+  "name": "ignite-buyer-board",
+  "version": "1.0.0",
+  "description": "Kanban account management tool for Ignite buying teams",
+  "main": "server/index.js",
+  "scripts": {
+    "test:db": "node server/db/test-connection.js",
+    "dev": "nodemon server/index.js"
+  },
+  "keywords": [],
+  "author": "Juan Sarria",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "mongodb": "^7.3.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

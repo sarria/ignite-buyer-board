@@ -1,0 +1,322 @@
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Box, Typography, CircularProgress, TextField,
+  Select, MenuItem, FormControl, InputLabel, Tooltip, IconButton, Chip,
+} from '@mui/material';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
+import SettingsIcon from '@mui/icons-material/Settings';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import {
+  DndContext, MouseSensor, TouchSensor, useSensor, useSensors,
+  DragOverlay, closestCorners, PointerSensor,
+} from '@dnd-kit/core';
+import { arrayMove, SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
+import BoardColumn from '../components/Board/BoardColumn';
+import BoardCard from '../components/Board/BoardCard';
+import CardDrawer from '../components/Card/CardDrawer';
+import { getBoard } from '../api/boards';
+import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
+import { reorderColumns } from '../api/columns';
+import { getTemplates, applyTemplate } from '../api/templates';
+import api from '../api/client';
+import { useApp } from '../context/AppContext';
+import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
+
+export default function BoardPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { mode, toggleTheme } = useApp();
+
+  const [board, setBoard] = useState(null);
+  const [columns, setColumns] = useState([]);
+  const [cards, setCards] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
+  const [filterHealth, setFilterHealth] = useState('');
+  const [activeCard, setActiveCard] = useState(null);
+  const [activeColumnId, setActiveColumnId] = useState(null);
+  const [drawerCardId, setDrawerCardId] = useState(null);
+  const [didDrag, setDidDrag] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        const [boardData, cardsData, usersData, templatesData] = await Promise.all([
+          getBoard(id),
+          getCards(id, { archived: 'false' }),
+          api.get('/users').then(r => r.data),
+          getTemplates(id),
+        ]);
+        setBoard(boardData);
+        setLastBoardId(id);
+        setColumns(boardData.columns || []);
+        setCards(cardsData);
+        setUsers(usersData);
+        setTemplates(templatesData);
+      } catch (e) {
+        // Board is gone or unreachable — drop the stale pointer so '/' won't loop back here.
+        clearLastBoardId();
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [id]);
+
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
+
+  const handleDragStart = useCallback(({ active }) => {
+    if (active.data.current?.type === 'card') {
+      setActiveCard(active.data.current.card);
+      setDidDrag(true);
+    } else if (active.data.current?.type === 'column') {
+      setActiveColumnId(active.id);
+      setDidDrag(true);
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(async ({ active, over }) => {
+    setActiveCard(null);
+    setActiveColumnId(null);
+    setTimeout(() => setDidDrag(false), 100);
+    if (!over) return;
+
+    const activeType = active.data.current?.type;
+
+    if (activeType === 'column') {
+      const oldIndex = columns.findIndex(c => c._id === active.id);
+      const newIndex = columns.findIndex(c => c._id === over.id);
+      if (oldIndex === newIndex) return;
+      const reordered = arrayMove(columns, oldIndex, newIndex);
+      setColumns(reordered);
+      await reorderColumns(id, reordered.map(c => c._id));
+      return;
+    }
+
+    if (activeType === 'card') {
+      const activeCard = active.data.current.card;
+      const overId = over.id;
+      const overType = over.data.current?.type;
+
+      const destColumnId = overType === 'column'
+        ? over.data.current.columnId
+        : overType === 'card'
+          ? cards.find(c => c._id === overId)?.columnId
+          : null;
+
+      if (!destColumnId) return;
+
+      const sourceColumnId = activeCard.columnId;
+      const movingBetweenColumns = sourceColumnId?.toString() !== destColumnId?.toString();
+
+      if (movingBetweenColumns) {
+        setCards(prev => prev.map(c =>
+          c._id === activeCard._id ? { ...c, columnId: destColumnId } : c
+        ));
+        await moveCard(activeCard._id, { columnId: destColumnId });
+      } else {
+        const colCards = cards.filter(c => c.columnId?.toString() === sourceColumnId?.toString());
+        const oldIndex = colCards.findIndex(c => c._id === active.id);
+        const newIndex = colCards.findIndex(c => c._id === overId);
+        if (oldIndex === newIndex) return;
+
+        const reordered = arrayMove(colCards, oldIndex, newIndex);
+        setCards(prev => {
+          const others = prev.filter(c => c.columnId?.toString() !== sourceColumnId?.toString());
+          return [...others, ...reordered];
+        });
+        await reorderCards(id, reordered.map(c => c._id));
+      }
+    }
+  }, [cards, columns, id]);
+
+  const handleAddCard = useCallback(async (columnId, title) => {
+    const created = await createCard(id, { columnId, title });
+    setCards(prev => [...prev, created]);
+  }, [id]);
+
+  const handleApplyTemplate = useCallback(async (template, columnId, title) => {
+    const created = await applyTemplate(template._id, columnId, title);
+    setCards(prev => [...prev, created]);
+  }, []);
+
+  const fields = board?.fields || [];
+  const healthField = fields.find(f => f.name === 'Health' && f.type === 'enum');
+  const healthOptions = healthField?.options || [];
+
+  const cardsByColumn = useMemo(() => {
+    const filtered = cards.filter(card => {
+      if (showArchived ? !card.isArchived : card.isArchived) return false;
+      if (filterAssignee && card.assigneeId?.toString() !== filterAssignee) return false;
+      if (filterHealth && healthField) {
+        const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
+        if (fv?.valueEnum !== filterHealth) return false;
+      }
+      if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+    const map = {};
+    columns.forEach(col => { map[col._id] = []; });
+    filtered.forEach(card => {
+      const key = card.columnId?.toString();
+      if (map[key]) map[key].push(card);
+    });
+    return map;
+  }, [cards, columns, filterAssignee, filterHealth, search, healthField, showArchived]);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
+  if (error) return <Box sx={{ p: 4 }}><Typography color="error">{error}</Typography></Box>;
+  if (!board) return null;
+
+  const activeColumn = activeColumnId ? columns.find(c => c._id === activeColumnId) : null;
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default', overflow: 'hidden' }}>
+      {/* Top bar */}
+      <Box sx={{
+        px: 3, py: 1.5,
+        borderBottom: '1px solid', borderColor: 'divider',
+        display: 'flex', alignItems: 'center', gap: 2,
+        bgcolor: 'background.paper', flexShrink: 0,
+      }}>
+        <Typography variant="h6" fontWeight={700} sx={{ mr: 2, whiteSpace: 'nowrap' }}>
+          {board.name}
+        </Typography>
+        <TextField
+          size="small" placeholder="Search cards…" value={search}
+          onChange={e => setSearch(e.target.value)} sx={{ width: 200 }}
+        />
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Assignee</InputLabel>
+          <Select value={filterAssignee} label="Assignee" onChange={e => setFilterAssignee(e.target.value)}>
+            <MenuItem value="">All</MenuItem>
+            {users.map(u => <MenuItem key={u._id} value={u._id}>{u.name}</MenuItem>)}
+          </Select>
+        </FormControl>
+        {healthOptions.length > 0 && (
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Health</InputLabel>
+            <Select value={filterHealth} label="Health" onChange={e => setFilterHealth(e.target.value)}>
+              <MenuItem value="">All</MenuItem>
+              {healthOptions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+            </Select>
+          </FormControl>
+        )}
+        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Tooltip title={showArchived ? 'Hide archived cards' : 'Show archived cards'}>
+            <IconButton
+              onClick={async () => {
+                if (!showArchived && !archivedLoaded) {
+                  const archived = await getCards(id, { archived: 'true' });
+                  setCards(prev => {
+                    const activeIds = new Set(prev.map(c => c._id.toString()));
+                    return [...prev, ...archived.filter(c => !activeIds.has(c._id.toString()))];
+                  });
+                  setArchivedLoaded(true);
+                }
+                setShowArchived(v => !v);
+              }}
+              size="small"
+              sx={{ color: showArchived ? '#f06a6a' : 'text.secondary' }}
+            >
+              <ArchiveIcon />
+            </IconButton>
+          </Tooltip>
+          {showArchived && (
+            <Chip label="Showing archived" size="small" sx={{ bgcolor: '#f06a6a22', color: '#f06a6a', fontWeight: 600 }} />
+          )}
+          <Tooltip title="Board settings">
+            <IconButton onClick={() => navigate(`/boards/${id}/settings`)} size="small">
+              <SettingsIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={mode === 'dark' ? 'Light mode' : 'Dark mode'}>
+            <IconButton onClick={toggleTheme} size="small">
+              {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {/* Board */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={columns.map(c => c._id)} strategy={horizontalListSortingStrategy}>
+          <Box sx={{ flex: 1, overflowX: 'auto', display: 'flex', alignItems: 'flex-start', p: 2 }}>
+            {columns.map(col => (
+              <BoardColumn
+                key={col._id}
+                column={col}
+                cards={cardsByColumn[col._id] || []}
+                fields={fields}
+                users={users}
+                selectedCardId={drawerCardId}
+                onCardClick={card => { if (!didDrag) setDrawerCardId(card._id); }}
+                onAddCard={handleAddCard}
+                onApplyTemplate={handleApplyTemplate}
+                templates={templates}
+                showArchived={showArchived}
+              />
+            ))}
+          </Box>
+        </SortableContext>
+
+        <DragOverlay>
+          {activeCard && (
+            <BoardCard card={activeCard} fields={fields} users={users} onClick={() => {}} />
+          )}
+          {activeColumn && (
+            <BoardColumn
+              column={activeColumn}
+              cards={cardsByColumn[activeColumn._id] || []}
+              fields={fields}
+              users={users}
+              onCardClick={() => {}}
+              onAddCard={() => {}}
+              onApplyTemplate={() => {}}
+              templates={[]}
+              isDragOverlay
+            />
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      <CardDrawer
+        cardId={drawerCardId}
+        open={!!drawerCardId}
+        onClose={() => setDrawerCardId(null)}
+        board={board}
+        columns={columns}
+        fields={fields}
+        users={users}
+        templates={templates}
+        allTags={[...new Set(cards.flatMap(c => c.tags || []))].sort()}
+        onCardUpdate={updated => setCards(prev => prev.map(c => c._id?.toString() === updated._id?.toString() ? { ...c, ...updated } : c))}
+        onCardDelete={(cardId) => {
+          setCards(prev => prev.filter(c => c._id?.toString() !== cardId?.toString()));
+        }}
+        onCardMove={(cardId) => {
+          setCards(prev => prev.filter(c => c._id?.toString() !== cardId?.toString()));
+        }}
+      />
+    </Box>
+  );
+}
