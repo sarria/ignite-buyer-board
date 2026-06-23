@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useTransition } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
@@ -45,6 +45,8 @@ export default function BoardPage() {
   const [templates, setTemplates] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     async function load() {
@@ -218,23 +220,33 @@ export default function BoardPage() {
         )}
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Tooltip title={showArchived ? 'Hide archived cards' : 'Show archived cards'}>
-            <IconButton
-              onClick={async () => {
-                if (!showArchived && !archivedLoaded) {
-                  const archived = await getCards(id, { archived: 'true' });
-                  setCards(prev => {
-                    const activeIds = new Set(prev.map(c => c._id.toString()));
-                    return [...prev, ...archived.filter(c => !activeIds.has(c._id.toString()))];
-                  });
-                  setArchivedLoaded(true);
-                }
-                setShowArchived(v => !v);
-              }}
-              size="small"
-              sx={{ color: showArchived ? '#f06a6a' : 'text.secondary' }}
-            >
-              <ArchiveIcon />
-            </IconButton>
+            <span>
+              <IconButton
+                disabled={loadingArchived}
+                onClick={async () => {
+                  if (!showArchived && !archivedLoaded) {
+                    setLoadingArchived(true);
+                    try {
+                      const archived = await getCards(id, { archived: 'true' });
+                      setCards(prev => {
+                        const activeIds = new Set(prev.map(c => c._id.toString()));
+                        return [...prev, ...archived.filter(c => !activeIds.has(c._id.toString()))];
+                      });
+                      setArchivedLoaded(true);
+                    } finally {
+                      setLoadingArchived(false);
+                    }
+                  }
+                  // Non-blocking: keep the UI responsive while the board re-renders
+                  // the (potentially large) archived card set.
+                  startTransition(() => setShowArchived(v => !v));
+                }}
+                size="small"
+                sx={{ color: showArchived ? '#f06a6a' : 'text.secondary' }}
+              >
+                {loadingArchived || isPending ? <CircularProgress size={18} color="inherit" /> : <ArchiveIcon />}
+              </IconButton>
+            </span>
           </Tooltip>
           {showArchived && (
             <Chip label="Showing archived" size="small" sx={{ bgcolor: '#f06a6a22', color: '#f06a6a', fontWeight: 600 }} />

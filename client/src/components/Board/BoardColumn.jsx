@@ -9,6 +9,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import BoardCard from './BoardCard';
+import ArchivedCard from './ArchivedCard';
 
 export default function BoardColumn({
   column, cards = [], fields = [], users = [], templates = [],
@@ -116,19 +117,33 @@ export default function BoardColumn({
           transition: 'background-color 0.15s',
         }}
       >
-        <SortableContext items={cards.map(c => c._id)} strategy={verticalListSortingStrategy}>
-          {cards.map(card => (
-            <BoardCard
+        {showArchived ? (
+          // Read-only, non-draggable cards — renders fast even for large archives.
+          cards.map(card => (
+            <ArchivedCard
               key={card._id}
               card={card}
               fields={fields}
               users={users}
               onClick={() => onCardClick(card)}
-              dimmed={card.isArchived}
               selected={selectedCardId?.toString() === card._id?.toString()}
             />
-          ))}
-        </SortableContext>
+          ))
+        ) : (
+          <SortableContext items={cards.map(c => c._id)} strategy={verticalListSortingStrategy}>
+            {cards.map(card => (
+              <BoardCard
+                key={card._id}
+                card={card}
+                fields={fields}
+                users={users}
+                onClick={() => onCardClick(card)}
+                dimmed={card.isArchived}
+                selected={selectedCardId?.toString() === card._id?.toString()}
+              />
+            ))}
+          </SortableContext>
+        )}
 
         {!isDragOverlay && !showArchived && (
           adding ? (
