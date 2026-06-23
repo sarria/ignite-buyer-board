@@ -13,6 +13,11 @@
  */
 require('dotenv').config();
 
+// Optional DNS override for flaky local resolvers (set DNS_SERVERS in .env).
+if (process.env.DNS_SERVERS) {
+  require('dns').setServers(process.env.DNS_SERVERS.split(',').map(s => s.trim()).filter(Boolean));
+}
+
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 const fs = require('fs');
 const path = require('path');

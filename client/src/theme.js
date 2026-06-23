@@ -1,12 +1,12 @@
 import { createTheme } from '@mui/material/styles';
 
-// Coral (#f06a6a) stays the brand/CTA color, but inputs focus in blue so an
-// active field never looks like an error. Red is reserved for real errors.
+// Blue is the brand/accent color (buttons, avatars, active states). Red is
+// reserved strictly for errors/alerts (overdue, delete, "Needs Work").
 const FOCUS_BLUE = '#4573d2';
 
 const common = {
   palette: {
-    primary: { main: '#f06a6a' },
+    primary: { main: '#4573d2' },
   },
   typography: {
     fontFamily: 'Roboto, sans-serif',

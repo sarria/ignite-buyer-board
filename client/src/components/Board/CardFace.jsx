@@ -83,7 +83,7 @@ export default function CardFace({ card, fields = [], users = [] }) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
           {assignee && (
             <Tooltip title={assignee.name}>
-              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: '#f06a6a' }}>
+              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: '#4573d2' }}>
                 {getInitials(assignee.name)}
               </Avatar>
             </Tooltip>

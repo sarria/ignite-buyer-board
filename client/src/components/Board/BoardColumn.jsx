@@ -163,7 +163,7 @@ export default function BoardColumn({
                   <Button
                     size="small" variant="contained"
                     disabled={saving || !newTitle.trim()} onClick={handleAdd}
-                    sx={{ bgcolor: '#f06a6a', '&:hover': { bgcolor: '#e05555' }, textTransform: 'none', fontWeight: 600, minWidth: 0 }}
+                    sx={{ bgcolor: '#4573d2', '&:hover': { bgcolor: '#3a63b8' }, textTransform: 'none', fontWeight: 600, minWidth: 0 }}
                   >
                     Add card
                   </Button>

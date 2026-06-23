@@ -42,7 +42,7 @@ export default function Sidebar() {
         <Box
           sx={{
             width: 28, height: 28, borderRadius: 1,
-            bgcolor: '#f06a6a', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            bgcolor: '#4573d2', display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
           }}
         >
@@ -112,7 +112,7 @@ export default function Sidebar() {
                   <Avatar
                     sx={{
                       width: 22, height: 22, fontSize: 10, fontWeight: 700,
-                      bgcolor: isActive ? '#f06a6a' : 'rgba(255,255,255,0.18)',
+                      bgcolor: isActive ? '#4573d2' : 'rgba(255,255,255,0.18)',
                       color: '#fff',
                       flexShrink: 0,
                     }}
@@ -163,7 +163,7 @@ export default function Sidebar() {
       {/* Bottom user area */}
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1.25 }}>
-        <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#f06a6a' }}>D</Avatar>
+        <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#4573d2' }}>D</Avatar>
         <Box sx={{ overflow: 'hidden' }}>
           <Typography variant="body2" noWrap sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Dev User</Typography>
           <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Admin</Typography>

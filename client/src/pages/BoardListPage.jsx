@@ -9,7 +9,7 @@ import { getBoards } from '../api/boards';
 import { getUsers } from '../api/users';
 
 // Asana-style coral/teal/purple palette for project icons, picked deterministically by name.
-const BOARD_COLORS = ['#f06a6a', '#4573d2', '#5da283', '#aa62e3', '#e8a33d', '#3aa9bd', '#d35a8c'];
+const BOARD_COLORS = ['#00897b', '#4573d2', '#5da283', '#aa62e3', '#e8a33d', '#3aa9bd', '#d35a8c'];
 const colorFor = (str) => {
   let hash = 0;
   for (let i = 0; i < str.length; i += 1) hash = str.charCodeAt(i) + ((hash << 5) - hash);

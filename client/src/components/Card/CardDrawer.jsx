@@ -21,6 +21,7 @@ import CardSubtasks from './CardSubtasks';
 import CardComments from './CardComments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
+import Collapsible from '../common/Collapsible';
 import { tagColor } from '../../utils/tagColor';
 
 const HEALTH_COLORS = {
@@ -286,7 +287,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               </Tooltip>
             )}
             <Tooltip title={card.isArchived ? 'Unarchive card' : 'Archive card'}>
-              <IconButton onClick={handleArchiveToggle} size="small" sx={{ color: card.isArchived ? '#f06a6a' : 'text.secondary' }}>
+              <IconButton onClick={handleArchiveToggle} size="small" sx={{ color: card.isArchived ? '#4573d2' : 'text.secondary' }}>
                 {card.isArchived ? <UnarchiveIcon fontSize="small" /> : <ArchiveIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
@@ -567,9 +568,11 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                     '&:hover': { bgcolor: locked ? 'transparent' : 'action.hover' },
                   }}
                 >
-                  {card.descriptionHtml
-                    ? <RichContent html={card.descriptionHtml} />
-                    : (card.description ? <Linkify text={card.description} /> : 'Add a description…')}
+                  <Collapsible collapsedHeight={280}>
+                    {card.descriptionHtml
+                      ? <RichContent html={card.descriptionHtml} />
+                      : (card.description ? <Linkify text={card.description} /> : 'Add a description…')}
+                  </Collapsible>
                   {descHasImages && (
                     <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1 }}>
                       Editing descriptions with images is coming with rich text — read-only for now.

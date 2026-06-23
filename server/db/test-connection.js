@@ -1,6 +1,9 @@
 'use strict';
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+if (process.env.DNS_SERVERS) {
+  require('dns').setServers(process.env.DNS_SERVERS.split(',').map(s => s.trim()).filter(Boolean));
+}
 const { connectDb, closeDb } = require('./index');
 
 (async () => {

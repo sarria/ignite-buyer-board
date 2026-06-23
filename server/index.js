@@ -5,6 +5,12 @@
 const app = require('./app');
 const { connectDb } = require('./db');
 
+// Optional DNS override for flaky local resolvers (e.g. a stale VPN DNS that
+// refuses SRV lookups). Set DNS_SERVERS=1.1.1.1,8.8.8.8 in .env. No-op in prod.
+if (process.env.DNS_SERVERS) {
+  require('dns').setServers(process.env.DNS_SERVERS.split(',').map(s => s.trim()).filter(Boolean));
+}
+
 const PORT = process.env.PORT || 3001;
 
 connectDb()

@@ -3,6 +3,7 @@ import { Box, Typography, TextField, Button, Avatar, Divider, Chip } from '@mui/
 import { createComment } from '../../api/comments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
+import Collapsible from '../common/Collapsible';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -37,7 +38,7 @@ export default function CardComments({ cardId, comments, onChange }) {
       </Typography>
 
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
-        <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: '#f06a6a', flexShrink: 0 }}>Me</Avatar>
+        <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: '#4573d2', flexShrink: 0 }}>Me</Avatar>
         <Box sx={{ flex: 1 }}>
           <TextField
             multiline
@@ -66,7 +67,7 @@ export default function CardComments({ cardId, comments, onChange }) {
         {[...comments].reverse().map(comment => (
           <Box key={comment._id}>
             <Box sx={{ display: 'flex', gap: 1.5 }}>
-              <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: comment.isMigrated ? '#9e9e9e' : '#f06a6a', flexShrink: 0 }}>
+              <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: comment.isMigrated ? '#9e9e9e' : '#4573d2', flexShrink: 0 }}>
                 {comment.isMigrated
                   ? getInitials(comment.migratedAuthorName || '?')
                   : 'Me'}
@@ -83,16 +84,18 @@ export default function CardComments({ cardId, comments, onChange }) {
                     <Chip label="Imported from Asana" size="small" sx={{ height: 16, fontSize: 10, opacity: 0.7 }} />
                   )}
                 </Box>
-                {comment.bodyHtml ? (
-                  <RichContent html={comment.bodyHtml} sx={{ fontSize: 14, color: comment.isMigrated ? 'text.secondary' : 'text.primary' }} />
-                ) : (
-                  <Typography
-                    variant="body2"
-                    sx={{ whiteSpace: 'pre-wrap', color: comment.isMigrated ? 'text.secondary' : 'text.primary' }}
-                  >
-                    <Linkify text={comment.body} />
-                  </Typography>
-                )}
+                <Collapsible collapsedHeight={260}>
+                  {comment.bodyHtml ? (
+                    <RichContent html={comment.bodyHtml} sx={{ fontSize: 14, color: comment.isMigrated ? 'text.secondary' : 'text.primary' }} />
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{ whiteSpace: 'pre-wrap', color: comment.isMigrated ? 'text.secondary' : 'text.primary' }}
+                    >
+                      <Linkify text={comment.body} />
+                    </Typography>
+                  )}
+                </Collapsible>
               </Box>
             </Box>
             <Divider sx={{ mt: 2 }} />

@@ -258,14 +258,14 @@ export default function BoardPage() {
                   startTransition(() => setShowArchived(v => !v));
                 }}
                 size="small"
-                sx={{ color: showArchived ? '#f06a6a' : 'text.secondary' }}
+                sx={{ color: showArchived ? '#4573d2' : 'text.secondary' }}
               >
                 {loadingArchived || isPending ? <CircularProgress size={18} color="inherit" /> : <ArchiveIcon />}
               </IconButton>
             </span>
           </Tooltip>
           {showArchived && (
-            <Chip label="Showing archived" size="small" sx={{ bgcolor: '#f06a6a22', color: '#f06a6a', fontWeight: 600 }} />
+            <Chip label="Showing archived" size="small" sx={{ bgcolor: '#4573d222', color: '#4573d2', fontWeight: 600 }} />
           )}
           <Tooltip title="Board settings">
             <IconButton onClick={() => navigate(`/boards/${id}/settings`)} size="small">
