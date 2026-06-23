@@ -68,14 +68,19 @@ async function createCard(req, res) {
 async function updateCard(req, res) {
   const db = await getDb();
   const cardId = new ObjectId(req.params.id);
-  const { title, assigneeId, dueDate, description, isArchived, tags } = req.body;
+  const { title, assigneeId, dueDate, description, isArchived, isCompleted, tags } = req.body;
   const $set = { updatedAt: new Date() };
 
   if (title !== undefined) $set.title = title;
   if (assigneeId !== undefined) $set.assigneeId = assigneeId ? new ObjectId(assigneeId) : null;
   if (dueDate !== undefined) $set.dueDate = dueDate ? new Date(dueDate) : null;
   if (description !== undefined) $set.description = description;
+  if (req.body.descriptionHtml !== undefined) $set.descriptionHtml = req.body.descriptionHtml;
   if (isArchived !== undefined) $set.isArchived = isArchived;
+  if (isCompleted !== undefined) {
+    $set.isCompleted = isCompleted;
+    $set.completedAt = isCompleted ? new Date() : null;
+  }
   if (tags !== undefined) {
     // Normalize: trim, drop empties, de-duplicate.
     $set.tags = [...new Set((tags || []).map(t => String(t).trim()).filter(Boolean))];

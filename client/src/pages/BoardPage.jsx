@@ -38,6 +38,7 @@ export default function BoardPage() {
   const [search, setSearch] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterHealth, setFilterHealth] = useState('');
+  const [completedFilter, setCompletedFilter] = useState('incomplete'); // incomplete | all | completed
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
   const [drawerCardId, setDrawerCardId] = useState(null);
@@ -163,6 +164,11 @@ export default function BoardPage() {
   const cardsByColumn = useMemo(() => {
     const filtered = cards.filter(card => {
       if (showArchived ? !card.isArchived : card.isArchived) return false;
+      // Completion filter (active board only; archive view shows everything).
+      if (!showArchived) {
+        if (completedFilter === 'incomplete' && card.isCompleted) return false;
+        if (completedFilter === 'completed' && !card.isCompleted) return false;
+      }
       if (filterAssignee && card.assigneeId?.toString() !== filterAssignee) return false;
       if (filterHealth && healthField) {
         const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
@@ -178,7 +184,7 @@ export default function BoardPage() {
       if (map[key]) map[key].push(card);
     });
     return map;
-  }, [cards, columns, filterAssignee, filterHealth, search, healthField, showArchived]);
+  }, [cards, columns, filterAssignee, filterHealth, completedFilter, search, healthField, showArchived]);
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
   if (error) return <Box sx={{ p: 4 }}><Typography color="error">{error}</Typography></Box>;
@@ -215,6 +221,16 @@ export default function BoardPage() {
             <Select value={filterHealth} label="Health" onChange={e => setFilterHealth(e.target.value)}>
               <MenuItem value="">All</MenuItem>
               {healthOptions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+            </Select>
+          </FormControl>
+        )}
+        {!showArchived && (
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Tasks</InputLabel>
+            <Select value={completedFilter} label="Tasks" onChange={e => setCompletedFilter(e.target.value)}>
+              <MenuItem value="incomplete">Incomplete</MenuItem>
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
             </Select>
           </FormControl>
         )}

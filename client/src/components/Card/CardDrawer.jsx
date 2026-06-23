@@ -12,11 +12,15 @@ import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined';
 import AddIcon from '@mui/icons-material/Add';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
+import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { getCard, updateCard, setCardFields, deleteCard, moveCardBoard } from '../../api/cards';
 import { getBoards, getBoard } from '../../api/boards';
 import CardSubtasks from './CardSubtasks';
 import CardComments from './CardComments';
 import Linkify from '../../utils/linkify';
+import RichContent from '../common/RichContent';
 import { tagColor } from '../../utils/tagColor';
 
 const HEALTH_COLORS = {
@@ -197,6 +201,9 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
     && comments.length === 0
     && subtasks.length === 0;
 
+  // Archived OR completed cards are read-only. Re-open via Unarchive / Mark incomplete.
+  const readOnly = !!(card && (card.isArchived || card.isCompleted));
+
   const handleTitleSave = async () => {
     if (titleValue.trim() && titleValue !== card.title) {
       await saveField({ title: titleValue.trim() });
@@ -231,7 +238,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
           {/* Header */}
           <Box sx={{ px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
             <Box sx={{ flex: 1 }}>
-              {editingTitle && !card.isArchived ? (
+              {editingTitle && !readOnly ? (
                 <TextField
                   autoFocus fullWidth size="small"
                   value={titleValue}
@@ -244,14 +251,20 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               ) : (
                 <Typography
                   variant="h6" fontWeight={700}
-                  onClick={() => { if (!card.isArchived) setEditingTitle(true); }}
-                  sx={{ cursor: card.isArchived ? 'default' : 'text', '&:hover': { bgcolor: card.isArchived ? 'transparent' : 'action.hover', borderRadius: 1 }, px: 0.5, mx: -0.5 }}
+                  onClick={() => { if (!readOnly) setEditingTitle(true); }}
+                  sx={{
+                    cursor: readOnly ? 'default' : 'text',
+                    textDecoration: card.isCompleted ? 'line-through' : 'none',
+                    color: card.isCompleted ? 'text.secondary' : 'text.primary',
+                    '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover', borderRadius: 1 },
+                    px: 0.5, mx: -0.5,
+                  }}
                 >
                   {card.title}
                 </Typography>
               )}
             </Box>
-            {!card.isArchived && templates.length > 0 && (
+            {!readOnly && templates.length > 0 && (
               <>
                 <Tooltip title="Apply template">
                   <IconButton size="small" onClick={e => setTemplateAnchor(e.currentTarget)}>
@@ -265,7 +278,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                 </Menu>
               </>
             )}
-            {!card.isArchived && (
+            {!readOnly && (
               <Tooltip title="Move to another project">
                 <IconButton onClick={openMove} size="small" sx={{ color: 'text.secondary' }}>
                   <DriveFileMoveOutlinedIcon fontSize="small" />
@@ -277,7 +290,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                 {card.isArchived ? <UnarchiveIcon fontSize="small" /> : <ArchiveIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
-            {isCardEmpty && !card.isArchived && (
+            {isCardEmpty && !readOnly && (
               <Tooltip title="Delete card">
                 <IconButton onClick={handleDelete} size="small" sx={{ color: 'error.main' }}>
                   <DeleteIcon fontSize="small" />
@@ -287,14 +300,41 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
           </Box>
 
-          {card.isArchived && (
+          {(card.isArchived || card.isCompleted) && (
             <Box sx={{ px: 3, py: 1, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary">This card is archived. Unarchive to make changes.</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {card.isArchived
+                  ? 'This card is archived. Unarchive to make changes.'
+                  : 'This card is completed. Mark incomplete to edit.'}
+              </Typography>
             </Box>
           )}
 
           {/* Body */}
-          <Box sx={{ px: 3, py: 2, flex: 1, pointerEvents: card.isArchived ? 'none' : 'auto' }}>
+          <Box sx={{ px: 3, py: 2, flex: 1 }}>
+            {/* Mark complete / incomplete — always interactive (the escape hatch);
+                hidden for archived cards, which are managed via unarchive. */}
+            {!card.isArchived && (
+              <Button
+                size="small"
+                variant={card.isCompleted ? 'contained' : 'outlined'}
+                startIcon={card.isCompleted ? <CheckCircleIcon /> : <CheckCircleOutlineIcon />}
+                onClick={() => saveField({ isCompleted: !card.isCompleted })}
+                sx={card.isCompleted
+                  ? { mb: 2, bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' }, textTransform: 'none' }
+                  : { mb: 2, color: 'text.secondary', borderColor: 'divider', textTransform: 'none', '&:hover': { borderColor: '#4caf50', color: '#4caf50' } }}
+              >
+                {card.isCompleted ? 'Completed' : 'Mark complete'}
+              </Button>
+            )}
+
+            {/* Editable content — locked (read-only) when archived or completed.
+                Links/images stay clickable so you can still read & download. */}
+            <Box sx={{
+              pointerEvents: readOnly ? 'none' : 'auto',
+              opacity: readOnly ? 0.6 : 1,
+              '& a, & img': { pointerEvents: 'auto' },
+            }}>
             {/* Core fields */}
             <FieldRow label="Status">
               <FormControl size="small" fullWidth>
@@ -493,39 +533,104 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
 
             {/* Description */}
             <Typography variant="subtitle2" fontWeight={700} mb={1}>Description</Typography>
-            {editingDesc && !card.isArchived ? (
-              <TextField
-                autoFocus
-                multiline
-                minRows={3}
-                fullWidth
-                size="small"
-                defaultValue={card.description || ''}
-                onBlur={e => {
-                  if (e.target.value !== card.description) saveField({ description: e.target.value });
-                  setEditingDesc(false);
-                }}
-                placeholder="Add a description…"
-              />
-            ) : (
-              <Typography
-                variant="body2"
-                onClick={() => { if (!card.isArchived) setEditingDesc(true); }}
-                sx={{
-                  whiteSpace: 'pre-wrap',
-                  minHeight: 48,
-                  p: 1,
-                  borderRadius: 1,
-                  cursor: card.isArchived ? 'default' : 'text',
-                  color: card.description ? 'text.primary' : 'text.disabled',
-                  '&:hover': { bgcolor: card.isArchived ? 'transparent' : 'action.hover' },
-                }}
-              >
-                {card.description ? <Linkify text={card.description} /> : 'Add a description…'}
-              </Typography>
-            )}
+            {(() => {
+              const descHasImages = card.descriptionHtml?.includes('<img');
+              // Locked when the card is read-only, or the description has inline
+              // images (plain-text editing would drop them — Phase 2 rich editor).
+              const locked = readOnly || descHasImages;
+
+              if (editingDesc && !locked) {
+                return (
+                  <TextField
+                    autoFocus multiline minRows={3} fullWidth size="small"
+                    defaultValue={card.description || ''}
+                    onBlur={e => {
+                      if (e.target.value !== card.description) {
+                        // Clear the migrated HTML so the new plain text is shown.
+                        saveField({ description: e.target.value, descriptionHtml: null });
+                      }
+                      setEditingDesc(false);
+                    }}
+                    placeholder="Add a description…"
+                  />
+                );
+              }
+
+              return (
+                <Box
+                  onClick={() => { if (!locked) setEditingDesc(true); }}
+                  sx={{
+                    minHeight: 48, p: 1, borderRadius: 1,
+                    cursor: locked ? 'default' : 'text',
+                    color: (card.description || card.descriptionHtml) ? 'text.primary' : 'text.disabled',
+                    whiteSpace: card.descriptionHtml ? 'normal' : 'pre-wrap',
+                    '&:hover': { bgcolor: locked ? 'transparent' : 'action.hover' },
+                  }}
+                >
+                  {card.descriptionHtml
+                    ? <RichContent html={card.descriptionHtml} />
+                    : (card.description ? <Linkify text={card.description} /> : 'Add a description…')}
+                  {descHasImages && (
+                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1 }}>
+                      Editing descriptions with images is coming with rich text — read-only for now.
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })()}
 
             <Divider sx={{ my: 2 }} />
+
+            {/* Attachments — only files NOT shown inline in the description/comments */}
+            {(() => {
+              const files = (card.attachments || []).filter(a => !a.inline);
+              if (!files.length) return null;
+              return (
+              <>
+                <Typography variant="subtitle2" fontWeight={700} mb={1}>
+                  Attachments ({files.length})
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                  {files.map((att, i) => (
+                    <Tooltip key={att.url || i} title={att.name || 'attachment'}>
+                      <Box
+                        component="a"
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 96, height: 96, borderRadius: 1,
+                          border: '1px solid', borderColor: 'divider', overflow: 'hidden',
+                          textDecoration: 'none', color: 'text.secondary',
+                          p: att.isImage ? 0 : 1,
+                          '&:hover': { borderColor: '#4573d2' },
+                        }}
+                      >
+                        {att.isImage ? (
+                          <Box
+                            component="img"
+                            src={att.url}
+                            alt={att.name || ''}
+                            loading="lazy"
+                            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          />
+                        ) : (
+                          <Box sx={{ textAlign: 'center', overflow: 'hidden', width: '100%' }}>
+                            <InsertDriveFileOutlinedIcon sx={{ fontSize: 30 }} />
+                            <Typography sx={{ fontSize: 9, lineHeight: 1.2, mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {att.name}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    </Tooltip>
+                  ))}
+                </Box>
+                <Divider sx={{ my: 2 }} />
+              </>
+              );
+            })()}
 
             {/* Subtasks */}
             <CardSubtasks cardId={card._id} subtasks={subtasks} onChange={setSubtasks} />
@@ -534,6 +639,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
 
             {/* Comments */}
             <CardComments cardId={card._id} comments={comments} onChange={setComments} />
+            </Box>
           </Box>
 
           {/* Move to another project */}

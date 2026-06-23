@@ -1,6 +1,7 @@
 import { Box, Typography, Chip, Avatar, Tooltip } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SellIcon from '@mui/icons-material/Sell';
 import { tagColor } from '../../utils/tagColor';
 
@@ -57,20 +58,26 @@ export default function CardFace({ card, fields = [], users = [] }) {
         />
       )}
 
-      <Typography
-        variant="body2"
-        fontWeight={600}
-        sx={{
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-          lineHeight: 1.4,
-          mb: 1,
-        }}
-      >
-        {card.title}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, mb: 1 }}>
+        {card.isCompleted && (
+          <CheckCircleIcon sx={{ fontSize: 16, color: '#4caf50', flexShrink: 0, mt: '2px' }} />
+        )}
+        <Typography
+          variant="body2"
+          fontWeight={600}
+          sx={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            lineHeight: 1.4,
+            textDecoration: card.isCompleted ? 'line-through' : 'none',
+            color: card.isCompleted ? 'text.secondary' : 'text.primary',
+          }}
+        >
+          {card.title}
+        </Typography>
+      </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>

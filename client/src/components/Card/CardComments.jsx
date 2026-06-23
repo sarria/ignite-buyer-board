@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, Typography, TextField, Button, Avatar, Divider, Chip } from '@mui/material';
 import { createComment } from '../../api/comments';
 import Linkify from '../../utils/linkify';
+import RichContent from '../common/RichContent';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -82,12 +83,16 @@ export default function CardComments({ cardId, comments, onChange }) {
                     <Chip label="Imported from Asana" size="small" sx={{ height: 16, fontSize: 10, opacity: 0.7 }} />
                   )}
                 </Box>
-                <Typography
-                  variant="body2"
-                  sx={{ whiteSpace: 'pre-wrap', color: comment.isMigrated ? 'text.secondary' : 'text.primary' }}
-                >
-                  <Linkify text={comment.body} />
-                </Typography>
+                {comment.bodyHtml ? (
+                  <RichContent html={comment.bodyHtml} sx={{ fontSize: 14, color: comment.isMigrated ? 'text.secondary' : 'text.primary' }} />
+                ) : (
+                  <Typography
+                    variant="body2"
+                    sx={{ whiteSpace: 'pre-wrap', color: comment.isMigrated ? 'text.secondary' : 'text.primary' }}
+                  >
+                    <Linkify text={comment.body} />
+                  </Typography>
+                )}
               </Box>
             </Box>
             <Divider sx={{ mt: 2 }} />

@@ -258,7 +258,9 @@ async function main() {
       continue;
     }
 
-    const isArchived = archiveColumns.has(card.column_gid) || card.is_archived;
+    // Archived = lives in an archive-named column ONLY. Completion is tracked
+    // separately (isCompleted) so completed cards still show in their column.
+    const isArchived = archiveColumns.has(card.column_gid);
 
     // Build fieldValues from custom fields
     const fieldValues = [];
@@ -277,6 +279,11 @@ async function main() {
     // Tags (e.g. NEW LAUNCH, SEM, PMAX) — normalize to an array of strings.
     const tags = (card.tags || []).map(t => (typeof t === 'string' ? t : t.name)).filter(Boolean);
 
+    // Image attachments already uploaded to S3 during export.
+    const attachments = (card.attachments || [])
+      .filter(a => a && a.url)
+      .map(a => ({ name: a.name, url: a.url, isImage: !!a.is_image, inline: !!a.inline, createdAt: a.created_at ? new Date(a.created_at) : null }));
+
     const assigneeId = card.assignee?.asana_gid ? assigneeMap[card.assignee.asana_gid] : null;
 
     const cardResult = await db.collection('cards').findOneAndUpdate(
@@ -287,10 +294,14 @@ async function main() {
           columnId,
           title: card.title,
           description: card.description || '',
+          descriptionHtml: card.description_html || null,
           assigneeId: assigneeId || null,
           dueDate: card.due_date ? new Date(card.due_date) : null,
           isArchived,
+          isCompleted: card.is_completed || false,
+          completedAt: card.completed_at ? new Date(card.completed_at) : null,
           tags,
+          attachments,
           fieldValues,
           asanaGid: card.asana_gid,
           asanaProjectGid: card.asana_project_gid,
@@ -343,6 +354,7 @@ async function main() {
             cardId,
             authorId: null,
             body: comment.body,
+            bodyHtml: comment.body_html || null,
             isMigrated: true,
             migratedAuthorName: comment.author?.name || 'Unknown',
             migratedAuthorEmail: comment.author?.email || null,

@@ -15,17 +15,36 @@ require('dotenv').config();
 
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 const fs = require('fs');
+const path = require('path');
+const { S3Client, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 
 const ASANA_PAT = process.env.ASANA_PAT || 'PASTE_YOUR_TOKEN_HERE';
 const BASE_URL = 'https://app.asana.com/api/1.0';
-const OUTPUT_FILE = 'asana-export-rachel.json';
+// Always write into migration/ (where the seeder reads it), regardless of CWD.
+const OUTPUT_FILE = path.join(__dirname, 'asana-export-rachel.json');
 
 // The A Team (Team Rachel) — confirmed GID from exploration
 const PROJECT_GID = '1156457376337923';
 const PROJECT_NAME = 'The A Team (Team Rachel)';
 
 // Delay between API calls to avoid rate limiting (ms)
-const RATE_LIMIT_DELAY = 150;
+const RATE_LIMIT_DELAY = Number(process.env.RATE_LIMIT_MS) || 150;
+
+// S3 for migrated image attachments. Public bucket for now (see memory:
+// s3-image-storage-plan — move to a private bucket later).
+const S3_BUCKET = process.env.S3_BUCKET;
+const S3_REGION = process.env.AWS_REGION;
+const S3_PREFIX = process.env.S3_PREFIX || 'buyer-board/';
+const S3_ENABLED = Boolean(S3_BUCKET && S3_REGION);
+const s3 = S3_ENABLED ? new S3Client({ region: S3_REGION }) : null;
+const IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+const CONTENT_TYPE = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+  pdf: 'application/pdf', csv: 'text/csv', txt: 'text/plain', zip: 'application/zip',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
 
 const headers = {
   'Authorization': `Bearer ${ASANA_PAT}`,
@@ -38,8 +57,68 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Global rate limiter: spaces ALL Asana calls >= RATE_LIMIT_DELAY ms apart, even
+// when many tasks run concurrently — keeps us under Asana's limit without 429s.
+let nextCallAt = 0;
+async function rateLimit() {
+  const now = Date.now();
+  const wait = Math.max(0, nextCallAt - now);
+  nextCallAt = Math.max(now, nextCallAt) + RATE_LIMIT_DELAY;
+  if (wait) await sleep(wait);
+}
+
+// Download an Asana image attachment (temporary signed download_url) and
+// upload it to S3, returning { url, skipped }. Keys are deterministic, so if the
+// object already exists we skip the download + upload (idempotent, resumable,
+// saves time/bandwidth on re-runs).
+async function uploadAttachmentToS3(att, taskGid) {
+  const ext = (att.name.split('.').pop() || '').toLowerCase();
+  const safeName = att.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  const key = `${S3_PREFIX}${taskGid}/${att.gid}-${safeName}`;
+  const url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
+
+  // Already in the bucket? Skip the expensive download + upload.
+  // HeadObject succeeds (200) only when the object exists. Any error — 404, or a
+  // 403 when the IAM user lacks s3:ListBucket (surfaces as "UnknownError" since
+  // HEAD has no body to parse) — means "not confirmed present", so fall through
+  // and upload. PutObject is idempotent, so re-uploading an existing key is safe.
+  try {
+    await s3.send(new HeadObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+    return { url, skipped: true };
+  } catch {
+    // not present (or not headable) — proceed to upload
+  }
+
+  const resp = await fetch(att.download_url); // presigned URL — no auth header
+  if (!resp.ok) throw new Error(`download HTTP ${resp.status}`);
+  const body = Buffer.from(await resp.arrayBuffer());
+  await s3.send(new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: CONTENT_TYPE[ext] || 'application/octet-stream',
+  }));
+  return { url, skipped: false };
+}
+
+// Asana embeds inline images as <img data-asana-gid="ATT_GID" src="...temporary..."> in
+// comment html_text and task html_notes. Rewrite each known image's src to its S3 URL
+// (the Asana src expires), and record which attachment gids were used inline.
+function rewriteHtmlImages(html, gidToUrl, referenced) {
+  if (!html) return null;
+  return html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const gid = tag.match(/data-asana-gid="(\d+)"/)?.[1];
+    const url = gid && gidToUrl[gid];
+    if (!url) return tag;
+    if (referenced) referenced.add(gid);
+    return /\bsrc="[^"]*"/.test(tag)
+      ? tag.replace(/\bsrc="[^"]*"/, `src="${url}"`)
+      : tag.replace(/<img\b/i, `<img src="${url}"`);
+  });
+}
+
 async function get(path) {
-  await sleep(RATE_LIMIT_DELAY);
+  await rateLimit();
   const res = await fetch(`${BASE_URL}${path}`, { headers });
   if (res.status === 429) {
     // Rate limited — wait and retry
@@ -120,13 +199,13 @@ async function main() {
   console.log('\n[5] Loading all cards (this may take a minute)...');
   const tasks = await getAll(
     `/projects/${PROJECT_GID}/tasks`,
-    '&opt_fields=gid,name,assignee.gid,assignee.name,assignee.email,due_on,completed,completed_at,created_at,modified_at,notes,tags.name,memberships.section.gid,num_subtasks,custom_fields.gid,custom_fields.name,custom_fields.display_value,custom_fields.enum_value,custom_fields.text_value,custom_fields.number_value'
+    '&opt_fields=gid,name,assignee.gid,assignee.name,assignee.email,due_on,completed,completed_at,created_at,modified_at,notes,html_notes,tags.name,memberships.section.gid,num_subtasks,custom_fields.gid,custom_fields.name,custom_fields.display_value,custom_fields.enum_value,custom_fields.text_value,custom_fields.number_value'
   );
   console.log(`\n✓ ${tasks.length} cards loaded (${tasks.filter(t => !t.completed).length} active, ${tasks.filter(t => t.completed).length} completed)`);
 
-  // 6. For each card: fetch comments and subtasks
-  console.log(`\n[6] Fetching comments and subtasks for each card...`);
-  console.log(`    (${tasks.length} cards × ~150ms = est. ${Math.round(tasks.length * 0.15 * 2 / 60)} min)`);
+  // 6. For each card: fetch comments, subtasks, and image attachments
+  console.log(`\n[6] Fetching comments, subtasks, and attachments for each card...`);
+  console.log(`    (${tasks.length} cards — attachments add download+upload time, allow extra minutes)`);
 
   const report = {
     totalCards: tasks.length,
@@ -134,18 +213,29 @@ async function main() {
     totalComments: 0,
     cardsWithSubtasks: 0,
     totalSubtasks: 0,
+    cardsWithAttachments: 0,
+    totalAttachments: 0,
+    attachmentsSkipped: 0,
     errors: [],
   };
 
-  const migratedCards = [];
+  if (!S3_ENABLED) {
+    console.log('  ⚠️  S3 not configured (set S3_BUCKET + AWS_REGION) — file attachments will be SKIPPED.');
+  }
 
-  for (let i = 0; i < tasks.length; i++) {
+  const migratedCards = new Array(tasks.length);
+  const CONCURRENCY = Number(process.env.MIGRATE_CONCURRENCY) || 6;
+
+  async function processOne(i) {
     const task = tasks[i];
-    progress(i + 1, tasks.length, task.name.substring(0, 30));
 
     // Determine which column this card is in
     const sectionGid = task.memberships?.[0]?.section?.gid;
     const columnName = sectionGid ? sectionMap[sectionGid] : null;
+
+    // attachment gid → S3 URL (built during upload), and gids used inline in HTML.
+    const gidToUrl = {};
+    const referenced = new Set();
 
     // Build the card object
     const card = {
@@ -189,19 +279,21 @@ async function main() {
       // These will be populated below
       comments: [],
       subtasks: [],
+      attachments: [],
     };
 
     // Fetch comments (stories of type 'comment')
     try {
       const stories = await getAll(
         `/tasks/${task.gid}/stories`,
-        '&opt_fields=gid,type,text,created_at,created_by.gid,created_by.name,created_by.email'
+        '&opt_fields=gid,type,text,html_text,created_at,created_by.gid,created_by.name,created_by.email'
       );
       const comments = stories
-        .filter(s => s.type === 'comment' && s.text)
+        .filter(s => s.type === 'comment' && (s.text || s.html_text))
         .map(s => ({
           asana_gid: s.gid,
-          body: s.text,
+          body: s.text || '',
+          body_html_raw: s.html_text || null,
           created_at: s.created_at,
           author: s.created_by ? {
             asana_gid: s.created_by.gid,
@@ -248,8 +340,60 @@ async function main() {
       }
     }
 
-    migratedCards.push(card);
+    // Fetch image attachments and upload them to S3 (skipped if S3 not configured)
+    if (S3_ENABLED) {
+      try {
+        const attachments = await getAll(
+          `/tasks/${task.gid}/attachments`,
+          '&opt_fields=gid,name,download_url,created_at,host,resource_subtype'
+        );
+        const files = [];
+        for (const att of attachments) {
+          if (!att.name || !att.download_url) continue; // need a downloadable Asana-hosted file
+          try {
+            const { url, skipped } = await uploadAttachmentToS3(att, task.gid);
+            gidToUrl[att.gid] = url; // images may also be referenced inline by gid
+            files.push({ asana_gid: att.gid, name: att.name, url, is_image: IMAGE_RE.test(att.name), created_at: att.created_at || null });
+            if (skipped) report.attachmentsSkipped++;
+          } catch (e) {
+            report.errors.push({ type: 'attachment', card_gid: task.gid, name: att.name, error: e.message });
+          }
+        }
+        card.attachments = files;
+        if (files.length) { report.cardsWithAttachments++; report.totalAttachments += files.length; }
+      } catch (e) {
+        report.errors.push({ type: 'attachments', card_gid: task.gid, card_name: task.name, error: e.message });
+      }
+    }
+
+    // Rewrite inline images (description + comments) to permanent S3 URLs, and flag
+    // which attachments are shown inline (so the flat Attachments list can skip them).
+    card.description_html = rewriteHtmlImages(task.html_notes, gidToUrl, referenced);
+    for (const c of card.comments) {
+      c.body_html = rewriteHtmlImages(c.body_html_raw, gidToUrl, referenced);
+      delete c.body_html_raw;
+    }
+    for (const img of card.attachments) img.inline = referenced.has(img.asana_gid);
+
+    migratedCards[i] = card;
   }
+
+  // Run tasks through a bounded concurrency pool (rateLimit() keeps Asana calls
+  // spaced; downloads/uploads overlap, so this is much faster than sequential).
+  let nextIndex = 0;
+  let completed = 0;
+  async function worker() {
+    let i;
+    while ((i = nextIndex++) < tasks.length) {
+      try {
+        await processOne(i);
+      } catch (e) {
+        report.errors.push({ type: 'task', card_gid: tasks[i].gid, card_name: tasks[i].name, error: e.message });
+      }
+      progress(++completed, tasks.length, tasks[i].name.substring(0, 30));
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
   console.log('\n');
 
@@ -280,7 +424,7 @@ async function main() {
       type: cf.type,
       options: cf.enum_options?.map(o => ({ gid: o.gid, name: o.name })) || [],
     })),
-    cards: migratedCards,
+    cards: migratedCards.filter(Boolean),
     report: {
       ...report,
       duration_seconds: Math.round((Date.now() - startTime) / 1000),
@@ -304,6 +448,8 @@ async function main() {
   console.log(`Total comments:     ${report.totalComments}`);
   console.log(`Cards w/ subtasks:  ${report.cardsWithSubtasks}`);
   console.log(`Total subtasks:     ${report.totalSubtasks}`);
+  console.log(`Cards w/ files:     ${report.cardsWithAttachments}`);
+  console.log(`Total files→S3:     ${report.totalAttachments} (${report.attachmentsSkipped} already in S3, skipped)`);
   console.log(`Errors:             ${report.errors.length}`);
   console.log(`Duration:           ${Math.floor(duration / 60)}m ${duration % 60}s`);
   console.log(`Output file:        ${OUTPUT_FILE} (${fileSizeKB} KB)`);
