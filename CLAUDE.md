@@ -4,6 +4,18 @@ Everything needed to rebuild this app to its **current state**. Read it fully be
 coding. It describes what IS built; a "Planned / not yet built" section at the end
 lists what is intentionally deferred. No aspirational code lives in this file.
 
+## Keep this file current (read this)
+
+This is the source of truth — update it in the **same change** that alters behavior, so
+it never drifts:
+- New/changed **DB fields** → *Database*; new **endpoints** → *API Routes*; new **env
+  vars** → *Environment Variables*; **design/behavior** decisions → *Design* /
+  *Key Business Rules*; new **dependencies** → *Tech Stack*.
+- When you finish something from **Planned / Not Yet Built**, move it into the built
+  sections.
+- Keep it lean and accurate — document only what IS built; no aspirational code or BS.
+- If the code and this file disagree, the **code wins** — fix the doc.
+
 ---
 
 ## What You Are Building
