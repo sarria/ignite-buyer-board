@@ -229,6 +229,12 @@ The page never scrolls. The card drawer is `position: fixed` to the viewport's r
 This 3-panel behavior (fixed sidebar, scrolling columns, fixed drawer) must hold no
 matter how many/wide the columns are.
 
+Each column fills the **full board height**: the header (name + count) is pinned at
+the top and the **Add card** composer is pinned at the bottom (`flexShrink:0`), and
+only the card list between them scrolls vertically (`overflowY:auto`). The columns
+container uses `alignItems:'stretch'` + `overflowY:'hidden'` so only the inner card
+lists scroll, never the page (mirrors Asana).
+
 ### Key components
 - **BoardCard / CardFace / ArchivedCard** — board cards. `CardFace` is the shared
   visual; `BoardCard` adds dnd-kit `useSortable`; `ArchivedCard` is read-only & NOT
@@ -240,6 +246,8 @@ matter how many/wide the columns are.
   Description (rich HTML render; click-to-edit when no inline images), Attachments
   (non-inline files: image thumbnails + file tiles), Subtasks, Comments. Move-to-
   project dialog. Archived OR completed cards are read-only (links/images still clickable).
+  The header (title + complete/archive/move/close actions) and the archived/completed
+  banner are **pinned** (`flexShrink:0`); only the body scrolls (`flex:1; overflowY:auto`).
 - **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
   inside Collapsible "See more"). Migrated comments show "Imported from Asana".
 - **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
@@ -287,6 +295,23 @@ Familiar to Asana users (board reference), but with our color rules.
   filter: Incomplete / All / Completed).
 - Theming: MUI light/dark in `theme.js`, primary `#4573d2`; user preference in
   AppContext (defaults to dark / OS pref), persisted in localStorage.
+- **`theme.js` is the single source of truth — do NOT hardcode `fontSize` or the brand
+  hex in components.** Use `<Typography variant="…">` and `color="primary"` /
+  `'primary.main'` (`'primary.dark'` for contained-button hover). Raw CSS strings that
+  need the brand (e.g. a selection-ring `boxShadow`, image `outline`) use a theme
+  callback (``theme => `…${theme.palette.primary.main}` ``). `theme.js` exports `BRAND`
+  for the rare literal case. (Intentional non-brand color sets stay literal:
+  `BOARD_COLORS` in BoardListPage, the `userColor` palette.)
+  - **Typography** — compact, Asana-like scale (base 13px): `h5` 17/600 (page/board
+    title), `h6` 15/600 (section header), `subtitle1` 14/600, `subtitle2` 13/600,
+    `body1` 14, `body2` 13 (default body/cards), `caption` 12, `button` 13/600.
+  - **Buttons** — flat (no elevation), **sentence-case** (`textTransform:none`), 6px
+    radius, set globally via `MuiButton`. Primary actions = `variant="contained"`
+    (brand blue automatically; no per-button `sx` color). Asana-like.
+  - **Shape** — default radius 8px.
+- Board toolbar (BoardPage top bar): slim row — board title (`h5`), a divider, then
+  understated **filled "pill" controls** (search + filter selects) whose border appears
+  only on hover/focus; filter selects render a muted `Label: Value` (no floating labels).
 
 Do NOT build: top nav tabs (Timeline/Calendar/etc.), Portfolios/Goals/Inbox,
 My Tasks, premium prompts, mobile-responsive layout.

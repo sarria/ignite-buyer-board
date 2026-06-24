@@ -28,7 +28,7 @@ function EditableCell({ value, onSave, type = 'text', options }) {
           <Chip
             label={value}
             size="small"
-            sx={{ bgcolor: value === 'admin' ? '#4573d222' : 'action.hover', color: value === 'admin' ? '#4573d2' : 'text.primary', fontWeight: 600 }}
+            sx={{ bgcolor: value === 'admin' ? '#4573d222' : 'action.hover', color: value === 'admin' ? 'primary.main' : 'text.primary', fontWeight: 600 }}
           />
         ) : (
           <Typography variant="body2">{value}</Typography>
@@ -107,9 +107,7 @@ export default function AdminUsersPage() {
         <Button
           startIcon={<AddIcon />}
           variant="contained"
-          onClick={() => setCreateOpen(true)}
-          sx={{ bgcolor: '#4573d2', '&:hover': { bgcolor: '#3a63b8' }, textTransform: 'none' }}
-        >
+          onClick={() => setCreateOpen(true)}        >
           Add user
         </Button>
       </Box>
@@ -213,9 +211,7 @@ export default function AdminUsersPage() {
           <Button
             variant="contained"
             disabled={saving || !newName.trim() || !newEmail.trim()}
-            onClick={handleCreate}
-            sx={{ bgcolor: '#4573d2', '&:hover': { bgcolor: '#3a63b8' }, textTransform: 'none' }}
-          >
+            onClick={handleCreate}          >
             Create
           </Button>
         </DialogActions>

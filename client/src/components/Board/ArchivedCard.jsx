@@ -13,14 +13,14 @@ export default function ArchivedCard({ card, fields = [], users = [], onClick, s
           ? (theme => theme.palette.mode === 'dark' ? 'rgba(69,115,210,0.20)' : 'rgba(69,115,210,0.10)')
           : 'background.paper',
         border: '1px solid',
-        borderColor: selected ? '#4573d2' : 'divider',
-        boxShadow: selected ? '0 0 0 1px #4573d2' : 'none',
+        borderColor: selected ? 'primary.main' : 'divider',
+        boxShadow: theme => (selected ? `0 0 0 1px ${theme.palette.primary.main}` : 'none'),
         borderRadius: 1.5,
         p: 1.5,
         mb: 1,
         opacity: 0.6,
         cursor: 'pointer',
-        '&:hover': { boxShadow: selected ? '0 0 0 1px #4573d2' : 3, opacity: 0.85 },
+        '&:hover': { boxShadow: theme => (selected ? `0 0 0 1px ${theme.palette.primary.main}` : 3), opacity: 0.85 },
         transition: 'box-shadow 0.15s, opacity 0.15s',
         userSelect: 'none',
       }}

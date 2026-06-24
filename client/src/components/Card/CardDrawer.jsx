@@ -277,9 +277,9 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
           <CircularProgress />
         </Box>
       ) : (
-        <Box sx={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', opacity: card.isArchived ? 0.75 : 1 }}>
-          {/* Header */}
-          <Box sx={{ px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+        <Box sx={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', opacity: card.isArchived ? 0.75 : 1 }}>
+          {/* Header (pinned) */}
+          <Box sx={{ flexShrink: 0, px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
             <Box sx={{ flex: 1 }}>
               {editingTitle && !readOnly ? (
                 <TextField
@@ -329,7 +329,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               </Tooltip>
             )}
             <Tooltip title={card.isArchived ? 'Unarchive card' : 'Archive card'}>
-              <IconButton onClick={handleArchiveToggle} size="small" sx={{ color: card.isArchived ? '#4573d2' : 'text.secondary' }}>
+              <IconButton onClick={handleArchiveToggle} size="small" sx={{ color: card.isArchived ? 'primary.main' : 'text.secondary' }}>
                 {card.isArchived ? <UnarchiveIcon fontSize="small" /> : <ArchiveIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
@@ -344,7 +344,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
           </Box>
 
           {(card.isArchived || card.isCompleted) && (
-            <Box sx={{ px: 3, py: 1, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ flexShrink: 0, px: 3, py: 1, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" color="text.secondary">
                 {card.isArchived
                   ? 'This card is archived. Unarchive to make changes.'
@@ -353,8 +353,8 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             </Box>
           )}
 
-          {/* Body */}
-          <Box sx={{ px: 3, py: 2, flex: 1 }}>
+          {/* Body (scrolls) */}
+          <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 3, py: 2 }}>
             {/* Mark complete / incomplete — always interactive (the escape hatch);
                 hidden for archived cards, which are managed via unarchive. */}
             {!card.isArchived && (
@@ -379,7 +379,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               '& a, & img': { pointerEvents: 'auto' },
             }}>
             {/* Core fields */}
-            <FieldRow label="Status">
+            <FieldRow label="Column">
               <FormControl size="small" fullWidth>
                 <Select
                   value={card.columnId?.toString() || ''}
@@ -633,7 +633,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                             border: '1px solid', borderColor: 'divider', overflow: 'hidden',
                             textDecoration: 'none', color: 'text.secondary',
                             p: att.isImage ? 0 : 1,
-                            '&:hover': { borderColor: '#4573d2' },
+                            '&:hover': { borderColor: 'primary.main' },
                           }}
                         >
                           {att.isImage ? (
@@ -670,7 +670,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           width: 96, height: 96, borderRadius: 1, cursor: 'pointer',
                           border: '1px dashed', borderColor: 'divider', color: 'text.secondary',
-                          '&:hover': { borderColor: '#4573d2', color: '#4573d2' },
+                          '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
                         }}
                       >
                         {uploadingAttachment ? <CircularProgress size={22} /> : <AddIcon />}

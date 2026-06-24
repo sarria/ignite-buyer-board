@@ -60,11 +60,12 @@ export default function BoardColumn({
     <Box
       ref={setSortRef}
       style={style}
-      sx={{ minWidth: 280, maxWidth: 280, display: 'flex', flexDirection: 'column', mx: 1 }}
+      sx={{ minWidth: 280, maxWidth: 280, display: 'flex', flexDirection: 'column', mx: 1, height: '100%', maxHeight: '100%' }}
     >
       <Paper
         elevation={0}
         sx={{
+          flexShrink: 0,
           px: 1.5, py: 1.25, mb: 1,
           borderRadius: 1.5,
           border: '1px solid',
@@ -104,19 +105,19 @@ export default function BoardColumn({
       </Paper>
 
       <Box
-        ref={setDropRef}
         sx={{
           flex: 1,
-          overflowY: 'auto',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
           bgcolor: theme => isOver
             ? (theme.palette.mode === 'dark' ? '#2e3a2e' : '#e8f5e9')
             : (theme.palette.mode === 'dark' ? '#242424' : '#f1f1f1'),
           borderRadius: 1.5,
-          p: 1,
-          minHeight: 80,
           transition: 'background-color 0.15s',
         }}
       >
+        <Box ref={setDropRef} sx={{ flex: 1, overflowY: 'auto', minHeight: 0, p: 1 }}>
         {showArchived ? (
           // Read-only, non-draggable cards — renders fast even for large archives.
           cards.map(card => (
@@ -144,9 +145,10 @@ export default function BoardColumn({
             ))}
           </SortableContext>
         )}
+        </Box>
 
         {!isDragOverlay && !showArchived && (
-          adding ? (
+          <Box sx={{ flexShrink: 0, px: 1, pb: 1 }}>{adding ? (
             <Box sx={{ mt: 1 }}>
               <TextField
                 autoFocus fullWidth size="small" multiline maxRows={4}
@@ -163,7 +165,7 @@ export default function BoardColumn({
                   <Button
                     size="small" variant="contained"
                     disabled={saving || !newTitle.trim()} onClick={handleAdd}
-                    sx={{ bgcolor: '#4573d2', '&:hover': { bgcolor: '#3a63b8' }, textTransform: 'none', fontWeight: 600, minWidth: 0 }}
+                    sx={{ bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' }, textTransform: 'none', fontWeight: 600, minWidth: 0 }}
                   >
                     Add card
                   </Button>
@@ -203,7 +205,7 @@ export default function BoardColumn({
               <AddIcon sx={{ fontSize: 16 }} />
               <Typography variant="body2">Add card</Typography>
             </Box>
-          )
+          )}</Box>
         )}
       </Box>
     </Box>

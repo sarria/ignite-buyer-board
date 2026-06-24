@@ -43,7 +43,7 @@ export default function Sidebar() {
         <Box
           sx={{
             width: 28, height: 28, borderRadius: 1,
-            bgcolor: '#4573d2', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
           }}
         >
@@ -113,7 +113,7 @@ export default function Sidebar() {
                   <Avatar
                     sx={{
                       width: 22, height: 22, fontSize: 10, fontWeight: 700,
-                      bgcolor: isActive ? '#4573d2' : 'rgba(255,255,255,0.18)',
+                      bgcolor: isActive ? 'primary.main' : 'rgba(255,255,255,0.18)',
                       color: '#fff',
                       flexShrink: 0,
                     }}

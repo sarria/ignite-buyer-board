@@ -86,7 +86,7 @@ export default function RichEditor({ value = '', onChange, minHeight = 90 }) {
           '& ul, & ol': { pl: 3, m: 0, mb: 0.5 },
           '& a': { color: '#2563eb' },
           '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, border: '1px solid', borderColor: 'divider' },
-          '& img.ProseMirror-selectednode': { outline: '2px solid #4573d2' },
+          '& img.ProseMirror-selectednode': { outline: theme => `2px solid ${theme.palette.primary.main}` },
         },
       }}>
         <EditorContent editor={editor} />

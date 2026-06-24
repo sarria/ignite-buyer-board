@@ -255,9 +255,7 @@ function TemplateRow({ template, columns, fields, users, onSave, onDelete }) {
                 size="small"
                 variant="contained"
                 disabled={saving || !name.trim()}
-                onClick={handleSave}
-                sx={{ bgcolor: '#4573d2', '&:hover': { bgcolor: '#3a63b8' }, textTransform: 'none' }}
-              >
+                onClick={handleSave}              >
                 Save
               </Button>
             </Box>
@@ -313,7 +311,8 @@ export default function TemplatesTab({ boardId, templates, columns, fields, user
           size="small"
           startIcon={<AddIcon />}
           onClick={() => setAdding(true)}
-          sx={{ textTransform: 'none', color: '#4573d2', flexShrink: 0, ml: 2 }}
+          color="primary"
+          sx={{ flexShrink: 0, ml: 2 }}
         >
           New template
         </Button>
@@ -328,7 +327,7 @@ export default function TemplatesTab({ boardId, templates, columns, fields, user
           />
           <Button
             size="small" variant="contained" disabled={saving || !newName.trim()} onClick={handleCreate}
-            sx={{ bgcolor: '#4573d2', '&:hover': { bgcolor: '#3a63b8' }, textTransform: 'none', whiteSpace: 'nowrap' }}
+            sx={{ whiteSpace: 'nowrap' }}
           >
             Create
           </Button>

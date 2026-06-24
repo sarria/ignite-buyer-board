@@ -2,12 +2,13 @@ import { useEffect, useState, useCallback, useMemo, useTransition } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
-  Select, MenuItem, FormControl, InputLabel, Tooltip, IconButton, Chip,
+  Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider,
 } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import SearchIcon from '@mui/icons-material/Search';
 import {
   DndContext, MouseSensor, TouchSensor, useSensor, useSensors,
   DragOverlay, closestCorners, PointerSensor,
@@ -192,42 +193,81 @@ export default function BoardPage() {
 
   const activeColumn = activeColumnId ? columns.find(c => c._id === activeColumnId) : null;
 
+  // Compact, Asana-like toolbar controls: filled pill, border appears on hover/focus.
+  const controlSx = {
+    height: 34,
+    borderRadius: 2,
+    bgcolor: 'action.hover',
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+    '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0, pl: 1.5 },
+  };
+  const filterLabel = (label, value) => (
+    <Box component="span" sx={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+      <Box component="span" sx={{ color: 'text.secondary' }}>{label}</Box>
+      {value && <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>: {value}</Box>}
+    </Box>
+  );
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default', overflow: 'hidden' }}>
       {/* Top bar */}
       <Box sx={{
-        px: 3, py: 1.5,
+        px: 2.5, py: 1.25,
         borderBottom: '1px solid', borderColor: 'divider',
-        display: 'flex', alignItems: 'center', gap: 2,
+        display: 'flex', alignItems: 'center', gap: 1.25,
         bgcolor: 'background.paper', flexShrink: 0,
       }}>
-        <Typography variant="h6" fontWeight={700} sx={{ mr: 2, whiteSpace: 'nowrap' }}>
+        <Typography sx={{ fontSize: '1.0625rem', fontWeight: 600, whiteSpace: 'nowrap', mr: 0.25 }}>
           {board.name}
         </Typography>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.75, my: 0.75 }} />
+
         <TextField
-          size="small" placeholder="Search cards…" value={search}
-          onChange={e => setSearch(e.target.value)} sx={{ width: 200 }}
+          size="small" placeholder="Search tasks" value={search}
+          onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.disabled', mr: 0.75 }} /> }}
+          sx={{
+            width: 200,
+            '& .MuiOutlinedInput-root': { ...controlSx, px: 1.25 },
+            '& input': { py: 0, fontSize: '0.8125rem' },
+          }}
         />
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Assignee</InputLabel>
-          <Select value={filterAssignee} label="Assignee" onChange={e => setFilterAssignee(e.target.value)}>
-            <MenuItem value="">All</MenuItem>
+
+        <FormControl size="small">
+          <Select
+            value={filterAssignee} displayEmpty
+            onChange={e => setFilterAssignee(e.target.value)}
+            renderValue={v => filterLabel('Assignee', users.find(u => u._id === v)?.name)}
+            sx={{ ...controlSx, minWidth: 120 }}
+          >
+            <MenuItem value="">All assignees</MenuItem>
             {users.map(u => <MenuItem key={u._id} value={u._id}>{u.name}</MenuItem>)}
           </Select>
         </FormControl>
         {healthOptions.length > 0 && (
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Health</InputLabel>
-            <Select value={filterHealth} label="Health" onChange={e => setFilterHealth(e.target.value)}>
-              <MenuItem value="">All</MenuItem>
+          <FormControl size="small">
+            <Select
+              value={filterHealth} displayEmpty
+              onChange={e => setFilterHealth(e.target.value)}
+              renderValue={v => filterLabel('Health', v)}
+              sx={{ ...controlSx, minWidth: 110 }}
+            >
+              <MenuItem value="">All health</MenuItem>
               {healthOptions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
             </Select>
           </FormControl>
         )}
         {!showArchived && (
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Tasks</InputLabel>
-            <Select value={completedFilter} label="Tasks" onChange={e => setCompletedFilter(e.target.value)}>
+          <FormControl size="small">
+            <Select
+              value={completedFilter}
+              onChange={e => setCompletedFilter(e.target.value)}
+              renderValue={v => filterLabel('Tasks', v === 'all' ? 'All' : v === 'completed' ? 'Completed' : 'Incomplete')}
+              sx={{ ...controlSx, minWidth: 110 }}
+            >
               <MenuItem value="incomplete">Incomplete</MenuItem>
               <MenuItem value="all">All</MenuItem>
               <MenuItem value="completed">Completed</MenuItem>
@@ -258,14 +298,14 @@ export default function BoardPage() {
                   startTransition(() => setShowArchived(v => !v));
                 }}
                 size="small"
-                sx={{ color: showArchived ? '#4573d2' : 'text.secondary' }}
+                sx={{ color: showArchived ? 'primary.main' : 'text.secondary' }}
               >
                 {loadingArchived || isPending ? <CircularProgress size={18} color="inherit" /> : <ArchiveIcon />}
               </IconButton>
             </span>
           </Tooltip>
           {showArchived && (
-            <Chip label="Showing archived" size="small" sx={{ bgcolor: '#4573d222', color: '#4573d2', fontWeight: 600 }} />
+            <Chip label="Showing archived" size="small" sx={{ bgcolor: '#4573d222', color: 'primary.main', fontWeight: 600 }} />
           )}
           <Tooltip title="Board settings">
             <IconButton onClick={() => navigate(`/boards/${id}/settings`)} size="small">
@@ -288,7 +328,7 @@ export default function BoardPage() {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={columns.map(c => c._id)} strategy={horizontalListSortingStrategy}>
-          <Box sx={{ flex: 1, minWidth: 0, overflowX: 'auto', display: 'flex', alignItems: 'flex-start', p: 2 }}>
+          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'stretch', p: 2 }}>
             {columns.map(col => (
               <BoardColumn
                 key={col._id}
