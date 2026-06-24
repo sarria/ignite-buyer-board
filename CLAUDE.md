@@ -262,6 +262,9 @@ lists scroll, never the page (mirrors Asana).
 - **RichContent** — sanitized (DOMPurify) render of migrated/edited HTML with inline
   images + hover-download.
 - **Collapsible** — "See more/less" for long content (re-measures after images load).
+  Bottom fade reads `--fade-bg` (falls back to `background.paper`); a parent sets that
+  CSS var to its own background — including on `:hover` — so the fade always matches
+  the underlying color in any theme.
 - **utils/tagColor** — deterministic color per tag name. `tagColor()` returns a swatch
   (`bg` pastel, `text` dark, `dot` vivid); `tagSolid()` returns the vivid `dot` fill +
   contrast-safe text. Card glyphs and drawer tag pills both use the **same `dot`** color,

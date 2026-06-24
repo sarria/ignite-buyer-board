@@ -35,7 +35,9 @@ export default function Collapsible({ children, collapsedHeight = 240 }) {
             sx={{
               position: 'absolute', bottom: 0, left: 0, right: 0, height: 44,
               pointerEvents: 'none',
-              background: theme => `linear-gradient(to bottom, transparent, ${theme.palette.background.paper})`,
+              // Fade to the container's own background via a CSS var the parent sets
+              // (falls back to paper). Lets the fade follow theme + hover backgrounds.
+              background: theme => `linear-gradient(to bottom, transparent, var(--fade-bg, ${theme.palette.background.paper}))`,
             }}
           />
         )}

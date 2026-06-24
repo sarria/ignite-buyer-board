@@ -344,9 +344,73 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               }}
             />
           )}
-          {/* Header (pinned) */}
-          <Box sx={{ flexShrink: 0, px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <Box sx={{ flex: 1 }}>
+          {/* Header (pinned): actions row on top (right-aligned), title below */}
+          <Box sx={{ flexShrink: 0, px: 3, pt: 1.5, pb: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {/* Action buttons: Mark complete on the left, icons on the right */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {/* Mark complete / incomplete — always interactive (the escape hatch);
+                  hidden for archived cards, which are managed via unarchive. */}
+              {!card.isArchived && (
+                <Button
+                  size="small"
+                  variant={card.isCompleted ? 'contained' : 'outlined'}
+                  startIcon={card.isCompleted ? <CheckCircleIcon /> : <CheckCircleOutlineIcon />}
+                  onClick={() => saveField({ isCompleted: !card.isCompleted })}
+                  sx={card.isCompleted
+                    ? { bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' } }
+                    : { color: 'text.secondary', borderColor: 'divider', '&:hover': { borderColor: '#4caf50', color: '#4caf50' } }}
+                >
+                  {card.isCompleted ? 'Completed' : 'Mark complete'}
+                </Button>
+              )}
+              <Box sx={{ flex: 1 }} />
+              <Tooltip title={copied ? 'Copied!' : 'Copy link to this card'}>
+                <IconButton onClick={handleCopyLink} size="small" sx={{ color: copied ? 'primary.main' : 'text.secondary' }}>
+                  <LinkIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title={fullscreen ? 'Exit full screen' : 'Full screen'}>
+                <IconButton onClick={() => setFullscreen(f => !f)} size="small" sx={{ color: 'text.secondary' }}>
+                  {fullscreen ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+                </IconButton>
+              </Tooltip>
+              {!readOnly && templates.length > 0 && (
+                <>
+                  <Tooltip title="Apply template">
+                    <IconButton size="small" onClick={e => setTemplateAnchor(e.currentTarget)}>
+                      <AutoAwesomeIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Menu anchorEl={templateAnchor} open={Boolean(templateAnchor)} onClose={() => setTemplateAnchor(null)}>
+                    {templates.map(t => (
+                      <MenuItem key={t._id} onClick={() => handleApplyTemplate(t)} dense>{t.name}</MenuItem>
+                    ))}
+                  </Menu>
+                </>
+              )}
+              {!readOnly && (
+                <Tooltip title="Move to another project">
+                  <IconButton onClick={openMove} size="small" sx={{ color: 'text.secondary' }}>
+                    <DriveFileMoveOutlinedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+              <Tooltip title={card.isArchived ? 'Unarchive card' : 'Archive card'}>
+                <IconButton onClick={handleArchiveToggle} size="small" sx={{ color: card.isArchived ? 'primary.main' : 'text.secondary' }}>
+                  {card.isArchived ? <UnarchiveIcon fontSize="small" /> : <ArchiveIcon fontSize="small" />}
+                </IconButton>
+              </Tooltip>
+              {isCardEmpty && !readOnly && (
+                <Tooltip title="Delete card">
+                  <IconButton onClick={handleDelete} size="small" sx={{ color: 'error.main' }}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+              <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+            </Box>
+            {/* Title */}
+            <Box>
               {editingTitle && !readOnly ? (
                 <TextField
                   autoFocus fullWidth size="small"
@@ -355,13 +419,14 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                   onBlur={handleTitleSave}
                   onKeyDown={e => { if (e.key === 'Enter') handleTitleSave(); if (e.key === 'Escape') setEditingTitle(false); }}
                   variant="standard"
-                  slotProps={{ input: { style: { fontSize: 18, fontWeight: 700 } } }}
+                  slotProps={{ input: { style: { fontSize: 20, fontWeight: 700, lineHeight: 1.3 } } }}
                 />
               ) : (
                 <Typography
-                  variant="h6" fontWeight={700}
+                  fontWeight={700}
                   onClick={() => { if (!readOnly) setEditingTitle(true); }}
                   sx={{
+                    fontSize: 20, lineHeight: 1.3,
                     cursor: readOnly ? 'default' : 'text',
                     textDecoration: card.isCompleted ? 'line-through' : 'none',
                     color: card.isCompleted ? 'text.secondary' : 'text.primary',
@@ -373,50 +438,6 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                 </Typography>
               )}
             </Box>
-            <Tooltip title={copied ? 'Copied!' : 'Copy link to this card'}>
-              <IconButton onClick={handleCopyLink} size="small" sx={{ color: copied ? 'primary.main' : 'text.secondary' }}>
-                <LinkIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={fullscreen ? 'Exit full screen' : 'Full screen'}>
-              <IconButton onClick={() => setFullscreen(f => !f)} size="small" sx={{ color: 'text.secondary' }}>
-                {fullscreen ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-            {!readOnly && templates.length > 0 && (
-              <>
-                <Tooltip title="Apply template">
-                  <IconButton size="small" onClick={e => setTemplateAnchor(e.currentTarget)}>
-                    <AutoAwesomeIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Menu anchorEl={templateAnchor} open={Boolean(templateAnchor)} onClose={() => setTemplateAnchor(null)}>
-                  {templates.map(t => (
-                    <MenuItem key={t._id} onClick={() => handleApplyTemplate(t)} dense>{t.name}</MenuItem>
-                  ))}
-                </Menu>
-              </>
-            )}
-            {!readOnly && (
-              <Tooltip title="Move to another project">
-                <IconButton onClick={openMove} size="small" sx={{ color: 'text.secondary' }}>
-                  <DriveFileMoveOutlinedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            <Tooltip title={card.isArchived ? 'Unarchive card' : 'Archive card'}>
-              <IconButton onClick={handleArchiveToggle} size="small" sx={{ color: card.isArchived ? 'primary.main' : 'text.secondary' }}>
-                {card.isArchived ? <UnarchiveIcon fontSize="small" /> : <ArchiveIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-            {isCardEmpty && !readOnly && (
-              <Tooltip title="Delete card">
-                <IconButton onClick={handleDelete} size="small" sx={{ color: 'error.main' }}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
-            <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
           </Box>
 
           {(card.isArchived || card.isCompleted) && (
@@ -431,22 +452,6 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
 
           {/* Body (scrolls) */}
           <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 3, py: 2 }}>
-            {/* Mark complete / incomplete — always interactive (the escape hatch);
-                hidden for archived cards, which are managed via unarchive. */}
-            {!card.isArchived && (
-              <Button
-                size="small"
-                variant={card.isCompleted ? 'contained' : 'outlined'}
-                startIcon={card.isCompleted ? <CheckCircleIcon /> : <CheckCircleOutlineIcon />}
-                onClick={() => saveField({ isCompleted: !card.isCompleted })}
-                sx={card.isCompleted
-                  ? { mb: 2, bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' }, textTransform: 'none' }
-                  : { mb: 2, color: 'text.secondary', borderColor: 'divider', textTransform: 'none', '&:hover': { borderColor: '#4caf50', color: '#4caf50' } }}
-              >
-                {card.isCompleted ? 'Completed' : 'Mark complete'}
-              </Button>
-            )}
-
             {/* Editable content — locked (read-only) when archived or completed.
                 Links/images stay clickable so you can still read & download. */}
             <Box sx={{
@@ -720,7 +725,13 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                   cursor: readOnly ? 'default' : 'text',
                   color: (card.description || card.descriptionHtml) ? 'text.primary' : 'text.disabled',
                   whiteSpace: card.descriptionHtml ? 'normal' : 'pre-wrap',
-                  '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover' },
+                  // Keep the "See more" fade (--fade-bg) in sync with this box's
+                  // background, incl. hover, so it always matches in any theme.
+                  '--fade-bg': theme => theme.palette.background.paper,
+                  '&:hover': readOnly ? {} : {
+                    bgcolor: theme => (theme.palette.mode === 'dark' ? '#3a3a3a' : '#f5f5f5'),
+                    '--fade-bg': theme => (theme.palette.mode === 'dark' ? '#3a3a3a' : '#f5f5f5'),
+                  },
                 }}
               >
                 <Collapsible collapsedHeight={280}>

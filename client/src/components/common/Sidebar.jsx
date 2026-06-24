@@ -9,7 +9,7 @@ import { getBoards } from '../../api/boards';
 import { userColor } from '../../utils/userColor';
 
 const WIDTH_COLLAPSED = 60;
-const WIDTH_DEFAULT = 220;
+const WIDTH_DEFAULT = 248;
 const WIDTH_MIN = 180;
 const WIDTH_MAX = 420;
 const COLLAPSE_KEY = 'sidebar.collapsed';
