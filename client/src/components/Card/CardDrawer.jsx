@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Drawer, Box, Typography, TextField, Select, MenuItem,
   FormControl, InputLabel, CircularProgress, Divider, IconButton,
-  Chip, Tooltip, Button, Menu, Autocomplete,
+  Chip, Tooltip, Button, Menu, Autocomplete, Skeleton,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -61,13 +61,59 @@ function FieldRow({ label, children }) {
   );
 }
 
+// Title display + click-to-edit, isolated with LOCAL state so typing the title
+// re-renders only this small field — not the whole (heavy) drawer. Keyed by card id
+// in the parent so it resets when a different card opens.
+function CardTitle({ title, completed, readOnly, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title);
+
+  const commit = () => {
+    setEditing(false);
+    const v = value.trim();
+    if (v && v !== title) onSave(v);
+    else setValue(title);
+  };
+
+  if (editing && !readOnly) {
+    return (
+      <TextField
+        autoFocus fullWidth size="small"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') { setValue(title); setEditing(false); }
+        }}
+        variant="standard"
+        slotProps={{ input: { style: { fontSize: 20, fontWeight: 700, lineHeight: 1.3 } } }}
+      />
+    );
+  }
+  return (
+    <Typography
+      fontWeight={700}
+      onClick={() => { if (!readOnly) setEditing(true); }}
+      sx={{
+        fontSize: 20, lineHeight: 1.3,
+        cursor: readOnly ? 'default' : 'text',
+        textDecoration: completed ? 'line-through' : 'none',
+        color: completed ? 'text.secondary' : 'text.primary',
+        '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover', borderRadius: 1 },
+        px: 0.5, mx: -0.5,
+      }}
+    >
+      {title}
+    </Typography>
+  );
+}
+
 export default function CardDrawer({ cardId, open, onClose, board, columns, fields, users, templates = [], allTags = [], onCardUpdate, onCardDelete, onCardMove }) {
   const [card, setCard] = useState(null);
   const [comments, setComments] = useState([]);
   const [subtasks, setSubtasks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleValue, setTitleValue] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
   // Custom fields the user revealed on this card despite having no value yet.
   const [extraFieldIds, setExtraFieldIds] = useState([]);
@@ -89,7 +135,6 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
     getCard(cardId)
       .then(data => {
         setCard(data);
-        setTitleValue(data.title);
         setComments(data.comments || []);
         setSubtasks(data.subtasks || []);
         setExtraFieldIds([]);
@@ -284,13 +329,6 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
   // Archived OR completed cards are read-only. Re-open via Unarchive / Mark incomplete.
   const readOnly = !!(card && (card.isArchived || card.isCompleted));
 
-  const handleTitleSave = async () => {
-    if (titleValue.trim() && titleValue !== card.title) {
-      await saveField({ title: titleValue.trim() });
-    }
-    setEditingTitle(false);
-  };
-
   const getFieldValue = (fieldId) => {
     const fv = card?.fieldValues?.find(v => v.fieldId?.toString() === fieldId?.toString());
     if (!fv) return '';
@@ -326,8 +364,29 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
       }}
     >
       {loading || !card ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
-          <CircularProgress />
+        // Skeleton frame so the drawer appears instantly, then fills in.
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flexShrink: 0, px: 3, pt: 1.5, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+              <Skeleton variant="rounded" width={120} height={30} />
+              <Box sx={{ display: 'flex', gap: 0.75 }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} variant="circular" width={26} height={26} />
+                ))}
+              </Box>
+            </Box>
+            <Skeleton variant="text" width="65%" sx={{ fontSize: 24 }} />
+          </Box>
+          <Box sx={{ flex: 1, px: 3, py: 2 }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Box key={i} sx={{ display: 'flex', gap: 2, py: 0.75, alignItems: 'center' }}>
+                <Skeleton variant="text" width={80} />
+                <Skeleton variant="rounded" height={32} sx={{ flex: 1 }} />
+              </Box>
+            ))}
+            <Skeleton variant="text" width={80} sx={{ mt: 2 }} />
+            <Skeleton variant="rounded" height={90} sx={{ mt: 1 }} />
+          </Box>
         </Box>
       ) : (
         <Box sx={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', opacity: card.isArchived ? 0.75 : 1 }}>
@@ -411,32 +470,13 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             </Box>
             {/* Title */}
             <Box>
-              {editingTitle && !readOnly ? (
-                <TextField
-                  autoFocus fullWidth size="small"
-                  value={titleValue}
-                  onChange={e => setTitleValue(e.target.value)}
-                  onBlur={handleTitleSave}
-                  onKeyDown={e => { if (e.key === 'Enter') handleTitleSave(); if (e.key === 'Escape') setEditingTitle(false); }}
-                  variant="standard"
-                  slotProps={{ input: { style: { fontSize: 20, fontWeight: 700, lineHeight: 1.3 } } }}
-                />
-              ) : (
-                <Typography
-                  fontWeight={700}
-                  onClick={() => { if (!readOnly) setEditingTitle(true); }}
-                  sx={{
-                    fontSize: 20, lineHeight: 1.3,
-                    cursor: readOnly ? 'default' : 'text',
-                    textDecoration: card.isCompleted ? 'line-through' : 'none',
-                    color: card.isCompleted ? 'text.secondary' : 'text.primary',
-                    '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover', borderRadius: 1 },
-                    px: 0.5, mx: -0.5,
-                  }}
-                >
-                  {card.title}
-                </Typography>
-              )}
+              <CardTitle
+                key={card._id}
+                title={card.title}
+                completed={card.isCompleted}
+                readOnly={readOnly}
+                onSave={(t) => saveField({ title: t })}
+              />
             </Box>
           </Box>
 

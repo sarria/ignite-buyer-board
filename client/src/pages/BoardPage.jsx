@@ -31,8 +31,8 @@ function SkeletonColumn() {
     <Box sx={{ minWidth: 280, maxWidth: 280, mx: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Skeleton variant="rounded" height={44} sx={{ mb: 1, borderRadius: 1.5 }} />
       <Box sx={{ flex: 1, bgcolor: theme => (theme.palette.mode === 'dark' ? '#242424' : '#f1f1f1'), borderRadius: 1.5, p: 1, overflow: 'hidden' }}>
-        {Array.from({ length: Math.ceil(window.innerHeight / 108) }).map((_, i) => (
-          <Skeleton key={i} variant="rounded" height={96} sx={{ mb: 1.5, borderRadius: 1.5 }} />
+        {Array.from({ length: Math.ceil(window.innerHeight / 156) }).map((_, i) => (
+          <Skeleton key={i} variant="rounded" height={144} sx={{ mb: 1.5, borderRadius: 1.5 }} />
         ))}
       </Box>
     </Box>
@@ -58,7 +58,9 @@ export default function BoardPage() {
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const drawerCardId = searchParams.get('card');
+  // Drawer open state is LOCAL (instant open/close) but mirrored to the URL
+  // (?card=<id>) for deep-linking; initialized from and synced to the URL.
+  const [drawerCardId, setDrawerCardId] = useState(() => searchParams.get('card'));
   const [didDrag, setDidDrag] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -110,12 +112,20 @@ export default function BoardPage() {
   // Card drawer open state lives in the URL (?card=<id>) so cards are deep-linkable
   // (copy link / refresh / back button all work).
   const openCard = useCallback((cardId) => {
+    // Local state updates immediately so the drawer opens/closes without waiting on
+    // the router; mirror to the URL afterwards (replace, to avoid history spam).
+    setDrawerCardId(cardId ? cardId.toString() : null);
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (cardId) next.set('card', cardId.toString()); else next.delete('card');
       return next;
-    });
+    }, { replace: true });
   }, [setSearchParams]);
+
+  // Sync the drawer if the URL changes externally (deep link, back/forward).
+  useEffect(() => {
+    setDrawerCardId(searchParams.get('card'));
+  }, [searchParams]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -190,12 +200,14 @@ export default function BoardPage() {
   const handleAddCard = useCallback(async (columnId, title) => {
     const created = await createCard(id, { columnId, title });
     setCards(prev => [...prev, created]);
-  }, [id]);
+    openCard(created._id); // open the new card so the user can keep filling it in
+  }, [id, openCard]);
 
   const handleApplyTemplate = useCallback(async (template, columnId, title) => {
     const created = await applyTemplate(template._id, columnId, title);
     setCards(prev => [...prev, created]);
-  }, []);
+    openCard(created._id);
+  }, [openCard]);
 
   const fields = board?.fields || [];
   const healthField = fields.find(f => f.name === 'Health' && f.type === 'enum');

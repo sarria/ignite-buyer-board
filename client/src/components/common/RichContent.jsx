@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Box } from '@mui/material';
 import DOMPurify from 'dompurify';
 
@@ -11,16 +12,23 @@ const CONFIG = {
 };
 
 export default function RichContent({ html, sx }) {
+  // Sanitize once per unique html — expensive (DOMPurify + regex), and otherwise
+  // re-runs on every parent re-render (e.g. each keystroke in a sibling field).
+  const clean = useMemo(() => {
+    if (!html) return '';
+    let c = DOMPurify.sanitize(html, CONFIG);
+    // Wrap each image so we can show a download/open button on hover.
+    c = c.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+      const src = attrs.match(/src="([^"]*)"/)?.[1] || '';
+      const dl = src
+        ? `<a class="rc-dl" href="${src}" target="_blank" rel="noopener noreferrer" title="Open image">↓</a>`
+        : '';
+      return `<span class="rc-img"><img ${attrs} loading="lazy"/>${dl}</span>`;
+    });
+    return c;
+  }, [html]);
+
   if (!html) return null;
-  let clean = DOMPurify.sanitize(html, CONFIG);
-  // Wrap each image so we can show a download/open button on hover.
-  clean = clean.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
-    const src = attrs.match(/src="([^"]*)"/)?.[1] || '';
-    const dl = src
-      ? `<a class="rc-dl" href="${src}" target="_blank" rel="noopener noreferrer" title="Open image">↓</a>`
-      : '';
-    return `<span class="rc-img"><img ${attrs} loading="lazy"/>${dl}</span>`;
-  });
 
   return (
     <Box

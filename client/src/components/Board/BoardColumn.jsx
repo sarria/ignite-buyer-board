@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Box, Typography, Paper, IconButton, TextField, Button, Menu, MenuItem, Tooltip, Skeleton } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -30,6 +30,16 @@ export default function BoardColumn({
   const [newTitle, setNewTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [templateAnchor, setTemplateAnchor] = useState(null);
+  const scrollRef = useRef(null);
+
+  // New cards land at the end of the list (which may be scrolled out of view).
+  // Scroll the column to the bottom so the card isn't lost after saving.
+  const scrollToNewCard = () => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }));
+  };
 
   const handleAdd = async () => {
     if (!newTitle.trim()) { setAdding(false); return; }
@@ -38,6 +48,7 @@ export default function BoardColumn({
     setNewTitle('');
     setAdding(false);
     setSaving(false);
+    scrollToNewCard();
   };
 
   const handleApplyTemplate = async (template) => {
@@ -47,6 +58,7 @@ export default function BoardColumn({
     await onApplyTemplate(template, column._id, newTitle.trim() || null);
     setNewTitle('');
     setSaving(false);
+    scrollToNewCard();
   };
 
   const style = isDragOverlay ? {} : {
@@ -117,11 +129,11 @@ export default function BoardColumn({
           transition: 'background-color 0.15s',
         }}
       >
-        <Box ref={setDropRef} sx={{ flex: 1, overflowY: 'auto', minHeight: 0, p: 1 }}>
+        <Box ref={node => { setDropRef(node); scrollRef.current = node; }} sx={{ flex: 1, overflowY: 'auto', minHeight: 0, p: 1 }}>
         {loadingCards ? (
           // Standard-card-height placeholders, enough to fill the column height.
-          Array.from({ length: Math.ceil(window.innerHeight / 108) }).map((_, i) => (
-            <Skeleton key={i} variant="rounded" height={96} sx={{ mb: 1.5, borderRadius: 1.5 }} />
+          Array.from({ length: Math.ceil(window.innerHeight / 156) }).map((_, i) => (
+            <Skeleton key={i} variant="rounded" height={144} sx={{ mb: 1.5, borderRadius: 1.5 }} />
           ))
         ) : showArchived ? (
           // Read-only, non-draggable cards — renders fast even for large archives.
