@@ -256,6 +256,18 @@ text → input · number → number input · date → date picker · url → tex
 clickable link when shown · enum → MUI Select. Health enum chip colors:
 Good `#4caf50`, Ok `#ff9800`, Needs Work `#f44336`, Waiting on DCM `#2196f3`.
 
+**Decision — no "rich text" custom field type (intentional).** Custom fields are for
+short, structured, scannable/filterable data (text, number, date, url, enum). All
+long-form rich content (formatting + inline images + files) lives in the **description**
+and **comments**. Rationale: (1) Asana itself has no rich-text custom field — long
+content goes in the description; (2) a rich-text field overlaps the description and
+invites buyers to scatter long notes across many fields, cluttering the card and
+fighting "keep it simple"; (3) real cost (new `valueHtml` storage, an editor per field,
+read/edit rendering, and it complicates "show only fields with a value" + filtering).
+Revisit only if buyers genuinely need a **second distinct rich section** per card
+(e.g. a "Strategy notes" block separate from the description) — then add a `richtext`
+type deliberately.
+
 ---
 
 ## Design
