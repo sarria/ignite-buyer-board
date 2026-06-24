@@ -4,6 +4,10 @@ import { createComment } from '../../api/comments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
 import Collapsible from '../common/Collapsible';
+import { userColor } from '../../utils/userColor';
+
+// Stub identity for the current user until real auth exists.
+const ME = 'Dev User';
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -38,7 +42,7 @@ export default function CardComments({ cardId, comments, onChange }) {
       </Typography>
 
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
-        <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: '#4573d2', flexShrink: 0 }}>Me</Avatar>
+        <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: userColor(ME), flexShrink: 0 }}>Me</Avatar>
         <Box sx={{ flex: 1 }}>
           <TextField
             multiline
@@ -67,7 +71,7 @@ export default function CardComments({ cardId, comments, onChange }) {
         {[...comments].reverse().map(comment => (
           <Box key={comment._id}>
             <Box sx={{ display: 'flex', gap: 1.5 }}>
-              <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: comment.isMigrated ? '#9e9e9e' : '#4573d2', flexShrink: 0 }}>
+              <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: comment.isMigrated ? userColor({ name: comment.migratedAuthorName, email: comment.migratedAuthorEmail }) : userColor(ME), flexShrink: 0 }}>
                 {comment.isMigrated
                   ? getInitials(comment.migratedAuthorName || '?')
                   : 'Me'}

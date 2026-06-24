@@ -7,6 +7,7 @@ import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleAltOutlined';
 import { getBoards } from '../api/boards';
 import { getUsers } from '../api/users';
+import { userColor } from '../utils/userColor';
 
 // Asana-style coral/teal/purple palette for project icons, picked deterministically by name.
 const BOARD_COLORS = ['#00897b', '#4573d2', '#5da283', '#aa62e3', '#e8a33d', '#3aa9bd', '#d35a8c'];
@@ -147,7 +148,7 @@ export default function BoardListPage() {
                   <Box key={u._id}>
                     {i > 0 && <Divider />}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.25 }}>
-                      <Avatar sx={{ width: 36, height: 36, fontSize: 13, bgcolor: colorFor(u.name || u.email || '') }}>
+                      <Avatar sx={{ width: 36, height: 36, fontSize: 13, bgcolor: userColor(u) }}>
                         {initials(u.name)}
                       </Avatar>
                       <Box sx={{ minWidth: 0 }}>

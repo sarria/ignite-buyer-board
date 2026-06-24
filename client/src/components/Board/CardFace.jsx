@@ -4,6 +4,7 @@ import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SellIcon from '@mui/icons-material/Sell';
 import { tagColor } from '../../utils/tagColor';
+import { userColor } from '../../utils/userColor';
 
 const HEALTH_COLORS = {
   'Good': '#4caf50',
@@ -83,7 +84,7 @@ export default function CardFace({ card, fields = [], users = [] }) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
           {assignee && (
             <Tooltip title={assignee.name}>
-              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: '#4573d2' }}>
+              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: userColor(assignee) }}>
                 {getInitials(assignee.name)}
               </Avatar>
             </Tooltip>

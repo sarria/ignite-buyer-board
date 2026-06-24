@@ -5,6 +5,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import HomeIcon from '@mui/icons-material/Home';
 import { getBoards } from '../../api/boards';
+import { userColor } from '../../utils/userColor';
 
 const SIDEBAR_WIDTH = 220;
 
@@ -163,7 +164,7 @@ export default function Sidebar() {
       {/* Bottom user area */}
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1.25 }}>
-        <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: '#4573d2' }}>D</Avatar>
+        <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: userColor('Dev User') }}>D</Avatar>
         <Box sx={{ overflow: 'hidden' }}>
           <Typography variant="body2" noWrap sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Dev User</Typography>
           <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Admin</Typography>
