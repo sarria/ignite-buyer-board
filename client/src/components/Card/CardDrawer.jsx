@@ -592,6 +592,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                 onClick={() => { if (!readOnly) setEditingDesc(true); }}
                 sx={{
                   minHeight: 48, p: 1, borderRadius: 1,
+                  fontSize: 14, // match the editor's font size (read = edit)
                   cursor: readOnly ? 'default' : 'text',
                   color: (card.description || card.descriptionHtml) ? 'text.primary' : 'text.disabled',
                   whiteSpace: card.descriptionHtml ? 'normal' : 'pre-wrap',

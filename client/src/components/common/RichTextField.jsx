@@ -28,17 +28,25 @@ export default function RichTextField({
   return (
     <Box>
       <RichEditor value={initialValue} onChange={setHtml} minHeight={minHeight} />
-      <Box sx={{ display: 'flex', gap: 1, mt: 0.75 }}>
+      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75 }}>
         <Button
           size="small"
           variant="contained"
           disabled={!hasContent(html) || saving}
           onClick={submit}
+          sx={{ textTransform: 'none', py: 0.25, px: 1.25, fontSize: 12.5, minWidth: 0 }}
         >
           {saving ? 'Saving…' : saveLabel}
         </Button>
         {onCancel && (
-          <Button size="small" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Button
+            size="small"
+            onClick={onCancel}
+            disabled={saving}
+            sx={{ textTransform: 'none', py: 0.25, px: 1.25, fontSize: 12.5, minWidth: 0, color: 'text.secondary' }}
+          >
+            Cancel
+          </Button>
         )}
       </Box>
     </Box>
