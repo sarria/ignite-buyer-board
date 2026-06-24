@@ -223,7 +223,10 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 
 ### Layout (app shell — important)
 `App.jsx` `SidebarLayout` is a viewport-locked shell: `position: fixed; inset: 0;
-display: flex; overflow: hidden`. Sidebar fixed left; main area `flex:1; minWidth:0`
+display: flex; overflow: hidden`. Sidebar fixed left, **drag-resizable** (right-edge
+handle, 180–420px, persisted in localStorage `sidebar.width`) and **collapsible** to a
+60px icon-only rail via the header chevron (persisted in `sidebar.collapsed`; collapsed
+rows show icons/avatars + right-placed tooltips). Main area `flex:1; minWidth:0`
 so the columns container (`overflow-x:auto`) scrolls **horizontally on its own**.
 The page never scrolls. The card drawer is `position: fixed` to the viewport's right.
 This 3-panel behavior (fixed sidebar, scrolling columns, fixed drawer) must hold no
@@ -242,7 +245,8 @@ lists scroll, never the page (mirrors Asana).
   icons, name on hover), Health chip, title (strikethrough + ✓ if completed),
   assignee avatar (per-user color), due date (red if overdue), subtask & comment counts.
 - **CardDrawer** — right drawer. Mark complete toggle, Status/Assignee/Due, Tags
-  (combobox), custom fields (only those with a value, "+ Add field" to reveal more),
+  (combobox), custom fields (only those with a value, "+ Add field" to reveal more).
+  Field inputs are **borderless until hover** (border on hover, blue on focus — Asana).
   Description (rich HTML render; click-to-edit when no inline images), Attachments
   (non-inline files: image thumbnails + file tiles), Subtasks, Comments. Move-to-
   project dialog. Archived OR completed cards are read-only (links/images still clickable).

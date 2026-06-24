@@ -377,6 +377,10 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               pointerEvents: readOnly ? 'none' : 'auto',
               opacity: readOnly ? 0.6 : 1,
               '& a, & img': { pointerEvents: 'auto' },
+              // Asana-like fields: outlined border hidden until hover; blue on focus.
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
             }}>
             {/* Core fields */}
             <FieldRow label="Column">
