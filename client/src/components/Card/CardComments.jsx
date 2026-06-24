@@ -1,13 +1,18 @@
 import { useState } from 'react';
-import { Box, Typography, TextField, Button, Avatar, Divider, Chip } from '@mui/material';
+import { Box, Typography, Button, Avatar, Divider, Chip } from '@mui/material';
 import { createComment } from '../../api/comments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
+import RichEditor from '../common/RichEditor';
 import Collapsible from '../common/Collapsible';
 import { userColor } from '../../utils/userColor';
 
 // Stub identity for the current user until real auth exists.
 const ME = 'Dev User';
+
+// Empty unless there's text or an image (image-only comments are allowed).
+const hasContent = (html) =>
+  !!html && (/<img/i.test(html) || html.replace(/<[^>]*>/g, '').trim().length > 0);
 
 function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -20,16 +25,19 @@ function formatDate(d) {
 }
 
 export default function CardComments({ cardId, comments, onChange }) {
-  const [body, setBody] = useState('');
+  const [html, setHtml] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editorKey, setEditorKey] = useState(0); // bump to reset the editor
 
   const handleSubmit = async () => {
-    if (!body.trim()) return;
+    if (!hasContent(html)) return;
     setSaving(true);
     try {
-      const created = await createComment(cardId, body.trim());
+      const text = html.replace(/<[^>]*>/g, '').trim();
+      const created = await createComment(cardId, { body: text, bodyHtml: html });
       onChange([...comments, created]);
-      setBody('');
+      setHtml('');
+      setEditorKey(k => k + 1);
     } finally {
       setSaving(false);
     }
@@ -44,16 +52,8 @@ export default function CardComments({ cardId, comments, onChange }) {
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
         <Avatar sx={{ width: 32, height: 32, fontSize: 12, bgcolor: userColor(ME), flexShrink: 0 }}>Me</Avatar>
         <Box sx={{ flex: 1 }}>
-          <TextField
-            multiline
-            minRows={2}
-            fullWidth
-            size="small"
-            placeholder="Add a comment…"
-            value={body}
-            onChange={e => setBody(e.target.value)}
-          />
-          {body.trim() && (
+          <RichEditor key={editorKey} value="" onChange={setHtml} minHeight={70} />
+          {hasContent(html) && (
             <Button
               size="small"
               variant="contained"
@@ -61,7 +61,7 @@ export default function CardComments({ cardId, comments, onChange }) {
               onClick={handleSubmit}
               disabled={saving}
             >
-              Save
+              {saving ? 'Saving…' : 'Save comment'}
             </Button>
           )}
         </Box>

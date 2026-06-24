@@ -23,6 +23,7 @@ app.use('/api/subtasks', require('./routes/subtasks'));
 app.use('/api/comments', require('./routes/comments'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/templates', require('./routes/templates'));
+app.use('/api/uploads', require('./routes/uploads'));
 
 // Health check (no auth)
 app.get('/health', (req, res) => res.json({ ok: true }));

@@ -288,7 +288,7 @@ export default function BoardPage() {
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={columns.map(c => c._id)} strategy={horizontalListSortingStrategy}>
-          <Box sx={{ flex: 1, overflowX: 'auto', display: 'flex', alignItems: 'flex-start', p: 2 }}>
+          <Box sx={{ flex: 1, minWidth: 0, overflowX: 'auto', display: 'flex', alignItems: 'flex-start', p: 2 }}>
             {columns.map(col => (
               <BoardColumn
                 key={col._id}

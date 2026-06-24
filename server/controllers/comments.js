@@ -13,15 +13,16 @@ async function listComments(req, res) {
 async function createComment(req, res) {
   const db = await getDb();
   const cardId = new ObjectId(req.params.id);
-  const { body } = req.body;
-  if (!body || !body.trim()) {
+  const { body, bodyHtml } = req.body;
+  if ((!body || !body.trim()) && (!bodyHtml || !bodyHtml.trim())) {
     return res.status(400).json({ error: { message: 'body is required', code: 'VALIDATION' } });
   }
 
   const doc = {
     cardId,
     authorId: new ObjectId(req.user._id),
-    body: body.trim(),
+    body: (body || '').trim(),
+    bodyHtml: bodyHtml || null,
     isMigrated: false,
     createdAt: new Date(),
   };

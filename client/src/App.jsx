@@ -16,9 +16,9 @@ function HomeRedirect() {
 
 function SidebarLayout() {
   return (
-    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ position: 'fixed', inset: 0, display: 'flex', overflow: 'hidden' }}>
       <Sidebar />
-      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <Outlet />
       </Box>
     </Box>

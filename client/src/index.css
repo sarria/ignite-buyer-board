@@ -50,13 +50,21 @@
   }
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  /* App shell: the page never scrolls — only inner panels (columns, drawer,
+     dashboard) scroll. Keeps the sidebar pinned left and the drawer pinned right. */
+  overflow: hidden;
 }
 
 #root {
   width: 100%;
-  min-height: 100svh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;

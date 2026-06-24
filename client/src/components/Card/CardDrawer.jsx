@@ -228,7 +228,22 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
       anchor="right"
       open={open}
       onClose={onClose}
-      slotProps={{ paper: { sx: { width: { xs: '100%', sm: 560 }, p: 0 } } }}
+      variant="temporary"
+      slotProps={{
+        // Force the panel pinned to the viewport's right edge regardless of how
+        // wide the board behind it is.
+        paper: {
+          sx: {
+            width: { xs: '100%', sm: 560 },
+            p: 0,
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            height: '100%',
+            maxWidth: '100vw',
+          },
+        },
+      }}
     >
       {loading || !card ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
