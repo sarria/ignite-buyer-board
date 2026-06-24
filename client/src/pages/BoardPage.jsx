@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useTransition } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
   Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider,
@@ -42,7 +42,8 @@ export default function BoardPage() {
   const [completedFilter, setCompletedFilter] = useState('incomplete'); // incomplete | all | completed
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
-  const [drawerCardId, setDrawerCardId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const drawerCardId = searchParams.get('card');
   const [didDrag, setDidDrag] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -77,6 +78,15 @@ export default function BoardPage() {
     load();
   }, [id]);
 
+  // Card drawer open state lives in the URL (?card=<id>) so cards are deep-linkable
+  // (copy link / refresh / back button all work).
+  const openCard = useCallback((cardId) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (cardId) next.set('card', cardId.toString()); else next.delete('card');
+      return next;
+    });
+  }, [setSearchParams]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -337,7 +347,7 @@ export default function BoardPage() {
                 fields={fields}
                 users={users}
                 selectedCardId={drawerCardId}
-                onCardClick={card => { if (!didDrag) setDrawerCardId(card._id); }}
+                onCardClick={card => { if (!didDrag) openCard(card._id); }}
                 onAddCard={handleAddCard}
                 onApplyTemplate={handleApplyTemplate}
                 templates={templates}
@@ -370,7 +380,7 @@ export default function BoardPage() {
       <CardDrawer
         cardId={drawerCardId}
         open={!!drawerCardId}
-        onClose={() => setDrawerCardId(null)}
+        onClose={() => openCard(null)}
         board={board}
         columns={columns}
         fields={fields}
@@ -380,9 +390,11 @@ export default function BoardPage() {
         onCardUpdate={updated => setCards(prev => prev.map(c => c._id?.toString() === updated._id?.toString() ? { ...c, ...updated } : c))}
         onCardDelete={(cardId) => {
           setCards(prev => prev.filter(c => c._id?.toString() !== cardId?.toString()));
+          openCard(null);
         }}
         onCardMove={(cardId) => {
           setCards(prev => prev.filter(c => c._id?.toString() !== cardId?.toString()));
+          openCard(null);
         }}
       />
     </Box>

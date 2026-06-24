@@ -15,6 +15,9 @@ import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
+import LinkIcon from '@mui/icons-material/Link';
 import { getCard, updateCard, setCardFields, deleteCard, moveCardBoard, addCardAttachment, removeCardAttachment } from '../../api/cards';
 import { uploadFile } from '../../api/uploads';
 import { getBoards, getBoard } from '../../api/boards';
@@ -24,7 +27,11 @@ import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
 import RichTextField from '../common/RichTextField';
 import Collapsible from '../common/Collapsible';
-import { tagColor } from '../../utils/tagColor';
+import { tagSolid } from '../../utils/tagColor';
+
+const DRAWER_WIDTH_DEFAULT = 560;
+const DRAWER_WIDTH_MIN = 420;
+const DRAWER_WIDTH_KEY = 'cardDrawer.width';
 
 const HEALTH_COLORS = {
   'Good': '#4caf50',
@@ -65,6 +72,16 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
   // Custom fields the user revealed on this card despite having no value yet.
   const [extraFieldIds, setExtraFieldIds] = useState([]);
   const [addFieldAnchor, setAddFieldAnchor] = useState(null);
+  const [editingTags, setEditingTags] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(DRAWER_WIDTH_KEY), 10);
+      return Number.isFinite(v) ? Math.max(DRAWER_WIDTH_MIN, v) : DRAWER_WIDTH_DEFAULT;
+    } catch { return DRAWER_WIDTH_DEFAULT; }
+  });
+  const [fullscreen, setFullscreen] = useState(false);
+  const [resizing, setResizing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!open || !cardId) return;
@@ -79,6 +96,41 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
       })
       .finally(() => setLoading(false));
   }, [cardId, open]);
+
+  // Drag the drawer's left edge to resize; width persisted across sessions.
+  useEffect(() => {
+    if (!resizing) return undefined;
+    const onMove = (e) => {
+      const max = Math.max(DRAWER_WIDTH_MIN, window.innerWidth - 80);
+      setDrawerWidth(Math.min(max, Math.max(DRAWER_WIDTH_MIN, window.innerWidth - e.clientX)));
+    };
+    const onUp = () => setResizing(false);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    const prevSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = prevSelect;
+      document.body.style.cursor = prevCursor;
+    };
+  }, [resizing]);
+
+  useEffect(() => {
+    try { localStorage.setItem(DRAWER_WIDTH_KEY, String(drawerWidth)); } catch { /* ignore */ }
+  }, [drawerWidth]);
+
+  const handleCopyLink = async () => {
+    const url = `${window.location.origin}/boards/${board?._id}?card=${card?._id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard unavailable */ }
+  };
 
   const saveField = useCallback(async (patch) => {
     if (!card) return;
@@ -261,13 +313,14 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
         // wide the board behind it is.
         paper: {
           sx: {
-            width: { xs: '100%', sm: 560 },
+            width: fullscreen ? '100vw' : { xs: '100%', sm: drawerWidth },
             p: 0,
             position: 'fixed',
             top: 0,
             right: 0,
             height: '100%',
             maxWidth: '100vw',
+            transition: resizing ? 'none' : 'width 0.2s',
           },
         },
       }}
@@ -278,6 +331,19 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
         </Box>
       ) : (
         <Box sx={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', opacity: card.isArchived ? 0.75 : 1 }}>
+          {/* Drag-to-resize handle (left edge; hidden in full screen) */}
+          {!fullscreen && (
+            <Box
+              onMouseDown={() => setResizing(true)}
+              sx={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, width: 6,
+                cursor: 'col-resize', zIndex: 20,
+                bgcolor: resizing ? 'rgba(69,115,210,0.6)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(69,115,210,0.6)' },
+                transition: 'background-color 0.15s',
+              }}
+            />
+          )}
           {/* Header (pinned) */}
           <Box sx={{ flexShrink: 0, px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
             <Box sx={{ flex: 1 }}>
@@ -307,6 +373,16 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                 </Typography>
               )}
             </Box>
+            <Tooltip title={copied ? 'Copied!' : 'Copy link to this card'}>
+              <IconButton onClick={handleCopyLink} size="small" sx={{ color: copied ? 'primary.main' : 'text.secondary' }}>
+                <LinkIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={fullscreen ? 'Exit full screen' : 'Full screen'}>
+              <IconButton onClick={() => setFullscreen(f => !f)} size="small" sx={{ color: 'text.secondary' }}>
+                {fullscreen ? <CloseFullscreenIcon fontSize="small" /> : <OpenInFullIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
             {!readOnly && templates.length > 0 && (
               <>
                 <Tooltip title="Apply template">
@@ -422,9 +498,12 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
 
             {/* Tags — Asana-style combobox: type to filter, pick existing, or create new */}
             <FieldRow label="Tags">
+              {editingTags ? (
               <Autocomplete
                 multiple
                 freeSolo
+                openOnFocus
+                onBlur={() => setEditingTags(false)}
                 size="small"
                 options={allTags}
                 value={card.tags || []}
@@ -456,12 +535,12 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                   if (typeof option !== 'string') {
                     return <li key={key} {...rest}>Create “{option.inputValue}”</li>;
                   }
-                  const c = tagColor(option);
+                  const c = tagSolid(option);
                   return <li key={key} {...rest}><Chip label={option} size="small" style={tagChipStyle(c)} sx={tagChipSx} /></li>;
                 }}
                 renderTags={(value, getTagProps) =>
                   value.map((tag, index) => {
-                    const c = tagColor(tag);
+                    const c = tagSolid(tag);
                     const { key, onDelete, ...rest } = getTagProps({ index });
                     // Plain styled pill (not MUI Chip) so the fill can't be overridden
                     // by MUI's .MuiChip-filled / .MuiAutocomplete-tag styling.
@@ -489,9 +568,50 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                   })
                 }
                 renderInput={params => (
-                  <TextField {...params} variant="standard" placeholder={(card.tags || []).length ? '' : 'Add tags…'} />
+                  <TextField {...params} autoFocus variant="standard" placeholder="Add or remove tags…" />
                 )}
               />
+              ) : (
+                <Box
+                  onClick={() => { if (!readOnly) setEditingTags(true); }}
+                  sx={{
+                    display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center',
+                    minHeight: 34, px: 0.5, py: 0.5, borderRadius: 1,
+                    cursor: readOnly ? 'default' : 'pointer',
+                    '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover' },
+                  }}
+                >
+                  {(card.tags || []).length ? (card.tags || []).map(tag => {
+                    const c = tagSolid(tag);
+                    return (
+                      <Box
+                        key={tag}
+                        style={{ backgroundColor: c.bg, color: c.text }}
+                        sx={{
+                          display: 'inline-flex', alignItems: 'center', gap: 0.25,
+                          fontWeight: 600, fontSize: 11, height: 22, borderRadius: '11px',
+                          pl: 1, pr: readOnly ? 1 : 0.25, maxWidth: '100%',
+                        }}
+                      >
+                        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tag}</Box>
+                        {!readOnly && (
+                          <CloseIcon
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const next = (card.tags || []).filter(t => t !== tag);
+                              setCard(prev => ({ ...prev, tags: next }));
+                              saveField({ tags: next });
+                            }}
+                            sx={{ fontSize: 15, cursor: 'pointer', color: c.text, opacity: 0.55, '&:hover': { opacity: 0.9 } }}
+                          />
+                        )}
+                      </Box>
+                    );
+                  }) : (
+                    <Typography variant="body2" sx={{ color: 'text.disabled' }}>Add tags…</Typography>
+                  )}
+                </Box>
+              )}
             </FieldRow>
 
             {/* Custom fields — show only those with a value (or ones the user added) */}

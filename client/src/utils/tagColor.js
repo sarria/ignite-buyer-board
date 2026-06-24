@@ -19,3 +19,21 @@ export function tagColor(name = '') {
   for (let i = 0; i < key.length; i += 1) hash = key.charCodeAt(i) + ((hash << 5) - hash);
   return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
 }
+
+// Readable text (near-black or white) for a solid fill of the given hex.
+function readableText(hex) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? '#1d1f25' : '#ffffff';
+}
+
+// Solid (vivid) variant: the SAME `.dot` color the card tag glyph uses, with a
+// contrast-safe text color. Use for tag pills so a tag is the same color on the
+// card preview and in the card details (and consistent with the Health chip).
+export function tagSolid(name = '') {
+  const fill = tagColor(name).dot;
+  return { bg: fill, text: readableText(fill) };
+}

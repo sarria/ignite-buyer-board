@@ -217,7 +217,7 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 ### Pages / routes
 - `/` → redirect to last-viewed board (localStorage) or `/dashboard`
 - `/dashboard` → home: greeting + Projects (boards) + People (users) widgets
-- `/boards/:id` → kanban board
+- `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer)
 - `/boards/:id/settings` → Columns / Fields / Templates tabs
 - `/admin/users` → user management
 
@@ -252,6 +252,9 @@ lists scroll, never the page (mirrors Asana).
   project dialog. Archived OR completed cards are read-only (links/images still clickable).
   The header (title + complete/archive/move/close actions) and the archived/completed
   banner are **pinned** (`flexShrink:0`); only the body scrolls (`flex:1; overflowY:auto`).
+  Drawer is **drag-resizable** (left-edge handle, min 420px, persisted in localStorage
+  `cardDrawer.width`), has a **full-screen** toggle, and a **copy-link** button that
+  yields a deep link to the card.
 - **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
   inside Collapsible "See more"). Migrated comments show "Imported from Asana".
 - **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
@@ -259,7 +262,10 @@ lists scroll, never the page (mirrors Asana).
 - **RichContent** — sanitized (DOMPurify) render of migrated/edited HTML with inline
   images + hover-download.
 - **Collapsible** — "See more/less" for long content (re-measures after images load).
-- **utils/tagColor** — deterministic pastel color per tag name (chips + glyphs).
+- **utils/tagColor** — deterministic color per tag name. `tagColor()` returns a swatch
+  (`bg` pastel, `text` dark, `dot` vivid); `tagSolid()` returns the vivid `dot` fill +
+  contrast-safe text. Card glyphs and drawer tag pills both use the **same `dot`** color,
+  so a tag looks identical everywhere.
 - **utils/userColor** — deterministic per-user avatar color (keyed email→name),
   consistent everywhere.
 
