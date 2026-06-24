@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Typography, Paper, IconButton, TextField, Button, Menu, MenuItem, Tooltip } from '@mui/material';
+import { Box, Typography, Paper, IconButton, TextField, Button, Menu, MenuItem, Tooltip, Skeleton } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -14,7 +14,7 @@ import ArchivedCard from './ArchivedCard';
 export default function BoardColumn({
   column, cards = [], fields = [], users = [], templates = [],
   onCardClick, onAddCard, onApplyTemplate, showArchived = false, isDragOverlay = false,
-  selectedCardId = null,
+  selectedCardId = null, loadingCards = false,
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: column._id,
@@ -118,7 +118,12 @@ export default function BoardColumn({
         }}
       >
         <Box ref={setDropRef} sx={{ flex: 1, overflowY: 'auto', minHeight: 0, p: 1 }}>
-        {showArchived ? (
+        {loadingCards ? (
+          // Standard-card-height placeholders, enough to fill the column height.
+          Array.from({ length: Math.ceil(window.innerHeight / 108) }).map((_, i) => (
+            <Skeleton key={i} variant="rounded" height={96} sx={{ mb: 1.5, borderRadius: 1.5 }} />
+          ))
+        ) : showArchived ? (
           // Read-only, non-draggable cards — renders fast even for large archives.
           cards.map(card => (
             <ArchivedCard
@@ -147,7 +152,7 @@ export default function BoardColumn({
         )}
         </Box>
 
-        {!isDragOverlay && !showArchived && (
+        {!isDragOverlay && !showArchived && !loadingCards && (
           <Box sx={{ flexShrink: 0, px: 1, pb: 1 }}>{adding ? (
             <Box sx={{ mt: 1 }}>
               <TextField

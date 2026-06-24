@@ -9,11 +9,12 @@ import { getBoards } from '../../api/boards';
 import { userColor } from '../../utils/userColor';
 
 const WIDTH_COLLAPSED = 60;
-const WIDTH_DEFAULT = 248;
+const WIDTH_DEFAULT = 264;
 const WIDTH_MIN = 180;
 const WIDTH_MAX = 420;
 const COLLAPSE_KEY = 'sidebar.collapsed';
-const WIDTH_KEY = 'sidebar.width';
+// Key revved to v2 so the wider default applies once even if an older width was saved.
+const WIDTH_KEY = 'sidebar.width.v2';
 
 export default function Sidebar() {
   const navigate = useNavigate();

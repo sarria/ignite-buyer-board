@@ -217,7 +217,11 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 ### Pages / routes
 - `/` → redirect to last-viewed board (localStorage) or `/dashboard`
 - `/dashboard` → home: greeting + Projects (boards) + People (users) widgets
-- `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer)
+- `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer).
+  **Frame-first loading**: board/columns load first and render immediately (skeleton
+  columns while the board loads, skeleton cards while cards load); cards, users, and
+  templates load independently so the page never shows a blank full-page spinner —
+  important as the dataset grows (Asana import).
 - `/boards/:id/settings` → Columns / Fields / Templates tabs
 - `/admin/users` → user management
 

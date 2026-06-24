@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useTransition } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
-  Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider,
+  Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider, Skeleton,
 } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -25,6 +25,20 @@ import api from '../api/client';
 import { useApp } from '../context/AppContext';
 import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
 
+// Placeholder column shown while the board frame (columns) is still loading.
+function SkeletonColumn() {
+  return (
+    <Box sx={{ minWidth: 280, maxWidth: 280, mx: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Skeleton variant="rounded" height={44} sx={{ mb: 1, borderRadius: 1.5 }} />
+      <Box sx={{ flex: 1, bgcolor: theme => (theme.palette.mode === 'dark' ? '#242424' : '#f1f1f1'), borderRadius: 1.5, p: 1, overflow: 'hidden' }}>
+        {Array.from({ length: Math.ceil(window.innerHeight / 108) }).map((_, i) => (
+          <Skeleton key={i} variant="rounded" height={96} sx={{ mb: 1.5, borderRadius: 1.5 }} />
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 export default function BoardPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -35,6 +49,7 @@ export default function BoardPage() {
   const [cards, setCards] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [cardsLoading, setCardsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
@@ -52,30 +67,44 @@ export default function BoardPage() {
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        const [boardData, cardsData, usersData, templatesData] = await Promise.all([
-          getBoard(id),
-          getCards(id, { archived: 'false' }),
-          api.get('/users').then(r => r.data),
-          getTemplates(id),
-        ]);
+    let cancelled = false;
+    // Reset so switching boards shows the new board's skeleton, not stale data.
+    setLoading(true);
+    setCardsLoading(true);
+    setError(null);
+    setBoard(null);
+    setColumns([]);
+    setCards([]);
+    setShowArchived(false);
+    setArchivedLoaded(false);
+
+    // Board (columns + fields) drives the visible frame — load it first so the
+    // top bar and columns render immediately, then the rest fills in.
+    getBoard(id)
+      .then(boardData => {
+        if (cancelled) return;
         setBoard(boardData);
         setLastBoardId(id);
         setColumns(boardData.columns || []);
-        setCards(cardsData);
-        setUsers(usersData);
-        setTemplates(templatesData);
-      } catch (e) {
+      })
+      .catch(e => {
         // Board is gone or unreachable — drop the stale pointer so '/' won't loop back here.
+        if (cancelled) return;
         clearLastBoardId();
         setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    // Cards fill in as they arrive (skeleton cards show meanwhile).
+    getCards(id, { archived: 'false' })
+      .then(cardsData => { if (!cancelled) setCards(cardsData); })
+      .finally(() => { if (!cancelled) setCardsLoading(false); });
+
+    // Users + templates are non-blocking (filters / template menus).
+    api.get('/users').then(r => { if (!cancelled) setUsers(r.data); }).catch(() => {});
+    getTemplates(id).then(t => { if (!cancelled) setTemplates(t); }).catch(() => {});
+
+    return () => { cancelled = true; };
   }, [id]);
 
   // Card drawer open state lives in the URL (?card=<id>) so cards are deep-linkable
@@ -197,9 +226,7 @@ export default function BoardPage() {
     return map;
   }, [cards, columns, filterAssignee, filterHealth, completedFilter, search, healthField, showArchived]);
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
   if (error) return <Box sx={{ p: 4 }}><Typography color="error">{error}</Typography></Box>;
-  if (!board) return null;
 
   const activeColumn = activeColumnId ? columns.find(c => c._id === activeColumnId) : null;
 
@@ -230,7 +257,7 @@ export default function BoardPage() {
         bgcolor: 'background.paper', flexShrink: 0,
       }}>
         <Typography sx={{ fontSize: '1.0625rem', fontWeight: 600, whiteSpace: 'nowrap', mr: 0.25 }}>
-          {board.name}
+          {board ? board.name : <Skeleton variant="text" width={180} />}
         </Typography>
 
         <Divider orientation="vertical" flexItem sx={{ mx: 0.75, my: 0.75 }} />
@@ -339,21 +366,24 @@ export default function BoardPage() {
       >
         <SortableContext items={columns.map(c => c._id)} strategy={horizontalListSortingStrategy}>
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'stretch', p: 2 }}>
-            {columns.map(col => (
-              <BoardColumn
-                key={col._id}
-                column={col}
-                cards={cardsByColumn[col._id] || []}
-                fields={fields}
-                users={users}
-                selectedCardId={drawerCardId}
-                onCardClick={card => { if (!didDrag) openCard(card._id); }}
-                onAddCard={handleAddCard}
-                onApplyTemplate={handleApplyTemplate}
-                templates={templates}
-                showArchived={showArchived}
-              />
-            ))}
+            {loading
+              ? Array.from({ length: 4 }).map((_, i) => <SkeletonColumn key={i} />)
+              : columns.map(col => (
+                <BoardColumn
+                  key={col._id}
+                  column={col}
+                  cards={cardsByColumn[col._id] || []}
+                  fields={fields}
+                  users={users}
+                  selectedCardId={drawerCardId}
+                  onCardClick={card => { if (!didDrag) openCard(card._id); }}
+                  onAddCard={handleAddCard}
+                  onApplyTemplate={handleApplyTemplate}
+                  templates={templates}
+                  showArchived={showArchived}
+                  loadingCards={cardsLoading}
+                />
+              ))}
           </Box>
         </SortableContext>
 
