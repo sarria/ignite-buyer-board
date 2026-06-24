@@ -22,7 +22,7 @@ import CardSubtasks from './CardSubtasks';
 import CardComments from './CardComments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
-import RichEditor from '../common/RichEditor';
+import RichTextField from '../common/RichTextField';
 import Collapsible from '../common/Collapsible';
 import { tagColor } from '../../utils/tagColor';
 
@@ -62,7 +62,6 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
-  const [descHtml, setDescHtml] = useState('');
   // Custom fields the user revealed on this card despite having no value yet.
   const [extraFieldIds, setExtraFieldIds] = useState([]);
   const [addFieldAnchor, setAddFieldAnchor] = useState(null);
@@ -578,30 +577,19 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             {/* Description */}
             <Typography variant="subtitle2" fontWeight={700} mb={1}>Description</Typography>
             {editingDesc && !readOnly ? (
-              <Box>
-                <RichEditor key={`desc-${card._id}`} value={descHtml} onChange={setDescHtml} minHeight={140} />
-                <Box sx={{ display: 'flex', gap: 1, mt: 0.75 }}>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={async () => {
-                      const text = descHtml.replace(/<[^>]*>/g, '').trim();
-                      await saveField({ description: text, descriptionHtml: descHtml });
-                      setEditingDesc(false);
-                    }}
-                  >
-                    Save
-                  </Button>
-                  <Button size="small" onClick={() => setEditingDesc(false)}>Cancel</Button>
-                </Box>
-              </Box>
+              <RichTextField
+                key={`desc-${card._id}`}
+                initialValue={card.descriptionHtml || card.description || ''}
+                minHeight={140}
+                onSave={async (html) => {
+                  await saveField({ description: html.replace(/<[^>]*>/g, '').trim(), descriptionHtml: html });
+                  setEditingDesc(false);
+                }}
+                onCancel={() => setEditingDesc(false)}
+              />
             ) : (
               <Box
-                onClick={() => {
-                  if (readOnly) return;
-                  setDescHtml(card.descriptionHtml || card.description || '');
-                  setEditingDesc(true);
-                }}
+                onClick={() => { if (!readOnly) setEditingDesc(true); }}
                 sx={{
                   minHeight: 48, p: 1, borderRadius: 1,
                   cursor: readOnly ? 'default' : 'text',

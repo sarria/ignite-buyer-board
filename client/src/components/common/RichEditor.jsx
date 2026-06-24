@@ -23,7 +23,10 @@ export default function RichEditor({ value = '', onChange, minHeight = 90 }) {
       LinkExt.configure({ openOnClick: false, autolink: true }),
       ImageExt,
     ],
-    content: value,
+    // Asana HTML uses bare "\n" for line breaks (rendered via white-space:pre-wrap).
+    // TipTap parses real HTML where newlines are insignificant, so convert them to
+    // <br> first or the content collapses into one block.
+    content: (value || '').replace(/\n/g, '<br>'),
     onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
     editorProps: {
       handlePaste: (_v, e) => handleFiles(e.clipboardData?.files),

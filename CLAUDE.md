@@ -60,7 +60,7 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       ├── components/
 │       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
-│       │   └── common/              # Sidebar, RichEditor, RichContent, Collapsible
+│       │   └── common/              # Sidebar, RichEditor, RichTextField, RichContent, Collapsible
 │       ├── context/                 # AppContext (theme light/dark)
 │       ├── pages/                   # BoardListPage (dashboard), BoardPage,
 │       │   │                        #   BoardSettingsPage, AdminUsersPage
