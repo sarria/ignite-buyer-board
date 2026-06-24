@@ -1,34 +1,39 @@
-# CLAUDE.md - Ignite Buyer Board
+# CLAUDE.md — Ignite Buyer Board
 
-This file contains everything Claude needs to build the Ignite Buyer Board app.
-Read this entire file before writing any code.
+Everything needed to rebuild this app to its **current state**. Read it fully before
+coding. It describes what IS built; a "Planned / not yet built" section at the end
+lists what is intentionally deferred. No aspirational code lives in this file.
 
 ---
 
 ## What You Are Building
 
-A kanban-style account management tool to replace Asana for Ignite buying teams.
-Buyers use it to track advertiser accounts, log optimization notes, and maintain
-historical records. It must feel fast and simple, never like a chore.
+A kanban-style account-management tool that replaces Asana for Ignite buying teams.
+Buyers track advertiser accounts across columns, log optimization notes (comments,
+often with pasted performance-dashboard images), attach files, and keep historical
+records migrated from Asana. It must feel fast and simple.
 
-Full requirements are in SPEC.md. This file contains the build instructions.
+Each board = one Asana "project" (e.g. "The A Team (Team Rachel)"). Columns, custom
+fields, and templates are **per board** (nothing is shared across boards), mirroring
+Asana where sections and task templates are project-scoped.
 
 ---
 
 ## Tech Stack
 
-- **Frontend**: React + Vite + Material UI (MUI v5)
-- **Backend**: Node.js (JavaScript only, no TypeScript anywhere)
-- **Database**: MongoDB (Atlas)
-- **Auth**: Microsoft SSO via MSAL (shared with Lumina)
-- **Drag and drop**: @dnd-kit/core
-- **HTTP client**: axios (frontend)
-- **API**: Express.js
-- **Hosting**: Vercel (initial), migrating to Lumina environment later
+- **Frontend**: React 19 + Vite + Material UI (MUI v9), `@dnd-kit` (drag/drop),
+  axios, **TipTap** (rich text editor), **DOMPurify** (sanitize migrated HTML),
+  react-router-dom v7.
+- **Backend**: Node.js (JavaScript only, CommonJS), Express 5. MongoDB official
+  driver (no Mongoose/ODM). `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`
+  for file storage.
+- **Database**: MongoDB Atlas.
+- **File/image storage**: AWS S3 (see "Files & Images").
+- **Auth**: **currently a stub** (hardcoded dev user). Microsoft SSO via MSAL is planned.
+- **Hosting**: Vercel (client built static + Express as a serverless function).
 
-Do not introduce TypeScript, GraphQL, Mongoose, or any framework not listed here.
-Use the MongoDB Node.js driver directly, no ORM or ODM.
-Match the stack Lumina uses exactly.
+Do not introduce TypeScript, GraphQL, Mongoose, or other frameworks. Frontend uses
+ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — MUI `sx`.
 
 ---
 
@@ -36,1005 +41,333 @@ Match the stack Lumina uses exactly.
 
 ```
 /
-├── client/                    # React + Vite frontend
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Board/         # Board, Column, Card components
-│   │   │   ├── Card/          # Card detail, comments, subtasks
-│   │   │   ├── Fields/        # Custom field renderers and editors
-│   │   │   └── common/        # Buttons, modals, inputs
-│   │   ├── pages/             # Route-level page components
-│   │   ├── hooks/             # Custom React hooks
-│   │   ├── context/           # Auth context, board context
-│   │   ├── api/               # Axios API call functions
-│   │   └── utils/             # Helpers, formatters
-│   └── index.html
-│
-├── server/                    # Node.js + Express backend
-│   ├── routes/                # Express route files
-│   ├── controllers/           # Route handler logic
-│   ├── middleware/            # Auth, error handling
-│   ├── db/
-│   │   ├── index.js           # MongoDB client connection
-│   │   └── seeds/             # Seed scripts including Asana import
-│   └── index.js               # Express app entry point
-│
-├── migration/                 # Asana migration scripts (standalone)
-│   ├── asana-explore.js
-│   ├── asana-migrate.js
-│   └── asana-seed.js          # Loads JSON export into MongoDB
-│
-└── SPEC.md
+├── client/                          # React + Vite frontend
+│   └── src/
+│       ├── api/                     # axios calls: boards, columns, fields, cards,
+│       │                            #   subtasks, comments, templates, users, uploads, client
+│       ├── components/
+│       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard
+│       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
+│       │   └── common/              # Sidebar, RichEditor, RichContent, Collapsible
+│       ├── context/                 # AppContext (theme light/dark)
+│       ├── pages/                   # BoardListPage (dashboard), BoardPage,
+│       │   │                        #   BoardSettingsPage, AdminUsersPage
+│       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab
+│       ├── utils/                   # tagColor, userColor, linkify, lastBoard
+│       ├── theme.js                 # light/dark MUI themes
+│       ├── App.jsx                  # router + fixed app-shell layout
+│       └── main.jsx
+├── server/                          # Express backend
+│   ├── app.js                       # builds + exports the Express app (no listen)
+│   ├── index.js                     # local dev: connectDb + app.listen
+│   ├── routes/                      # one file per resource (+ uploads)
+│   ├── controllers/                 # handler logic
+│   ├── middleware/                  # auth (stub), error
+│   ├── lib/                         # s3.js (presign + delete + publicUrl)
+│   └── db/                          # index.js (connection + indexes), test-connection.js
+├── api/index.js                     # Vercel serverless entry → exports server/app
+├── migration/                       # asana-explore.js, asana-migrate.js, asana-seed.js
+│                                    #   (+ asana-export-rachel.json, gitignored)
+├── vercel.json                      # build client → client/dist, route /api/* to function
+└── CLAUDE.md / SPEC.md / API.md
 ```
 
 ---
 
 ## Database
 
-Use the official MongoDB Node.js driver with a connection pool.
-No Mongoose, no ODM. Write queries directly against the driver.
+Official MongoDB Node driver with a cached connection pool. `getDb()` lazily calls
+`connectDb()` (so serverless invocations work without a startup hook).
 
 ### Collections
+`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates`
 
-```
-users
-boards
-columns
-custom_fields
-cards
-subtasks
-comments
-card_templates
-```
-
-### Indexes to create on startup
+### Document shapes (current)
 
 ```javascript
 // users
-db.collection('users').createIndex({ email: 1 }, { unique: true });
-db.collection('users').createIndex({ microsoftId: 1 }, { unique: true, sparse: true });
+{ _id, name, email /*unique*/, role /*'admin'|'member'*/, microsoftId, defaultBoardId, createdAt }
 
 // boards
-// (no special indexes needed beyond _id)
+{ _id, name, description, createdBy, createdAt, asanaProjectGid }
 
-// columns
-db.collection('columns').createIndex({ boardId: 1, position: 1 });
+// columns  (per board)
+{ _id, boardId, name, position, color /*hex*/, asanaGid, createdAt }
 
-// custom_fields
-db.collection('custom_fields').createIndex({ boardId: 1, position: 1 });
+// custom_fields  (per board)
+{ _id, boardId, name, type /*'text'|'number'|'date'|'url'|'enum'*/, options:[String],
+  isRequired, position, asanaGid }
 
 // cards
-db.collection('cards').createIndex({ boardId: 1 });
-db.collection('cards').createIndex({ columnId: 1, position: 1 });
-db.collection('cards').createIndex({ assigneeId: 1 });
-db.collection('cards').createIndex({ asanaGid: 1 }, { sparse: true });
-db.collection('cards').createIndex({ title: 'text' }); // for search
+{ _id, boardId, columnId, title,
+  assigneeId, dueDate, position,
+  description,            // plain text
+  descriptionHtml,        // rich HTML (migrated/inline images); null if plain
+  isArchived,             // archive = lives in an archive-named column / manual archive
+  isCompleted, completedAt, // completion is SEPARATE from archive
+  tags: [String],
+  attachments: [ { name, url /*S3*/, isImage, inline /*true=shown inside description/comment*/, createdAt } ],
+  fieldValues: [ { fieldId, valueText, valueNumber, valueDate, valueEnum } ],
+  asanaGid, asanaProjectGid, createdAt, updatedAt }
 
 // subtasks
-db.collection('subtasks').createIndex({ cardId: 1, position: 1 });
+{ _id, cardId, title, assigneeId, dueDate, isComplete, notes, position, asanaGid, createdAt }
 
 // comments
-db.collection('comments').createIndex({ cardId: 1, createdAt: 1 });
+{ _id, cardId, authorId /*null for migrated*/,
+  body,                   // plain text
+  bodyHtml,               // rich HTML w/ inline images (null if plain)
+  isMigrated, migratedAuthorName, migratedAuthorEmail,
+  asanaGid, createdAt /*preserve original Asana timestamp on migration*/ }
+
+// card_templates  (per board)
+{ _id, boardId, name, descriptionTemplate, defaultColumnId, defaultAssigneeId,
+  dueDateOffsetDays, defaultFieldValues:[...], defaultSubtasks:[{title, dueDateOffsetDays}],
+  position, createdAt }
 ```
 
-### Document Shapes
-
-```javascript
-// users
-{
-  _id: ObjectId,
-  name: String,
-  email: String,           // unique
-  role: String,            // 'admin' or 'member'
-  microsoftId: String,     // from MSAL, unique
-  defaultBoardId: ObjectId,
-  createdAt: Date
-}
-
-// boards
-{
-  _id: ObjectId,
-  name: String,
-  description: String,
-  createdBy: ObjectId,
-  createdAt: Date
-}
-
-// columns
-{
-  _id: ObjectId,
-  boardId: ObjectId,
-  name: String,
-  position: Number,
-  color: String,           // hex e.g. '#4caf50'
-  asanaGid: String,
-  createdAt: Date
-}
-
-// custom_fields
-{
-  _id: ObjectId,
-  boardId: ObjectId,
-  name: String,
-  type: String,            // 'text' | 'number' | 'date' | 'url' | 'enum'
-  options: [String],       // for enum type only
-  isRequired: Boolean,
-  position: Number,
-  asanaGid: String
-}
-
-// cards
-{
-  _id: ObjectId,
-  boardId: ObjectId,
-  columnId: ObjectId,
-  title: String,
-  assigneeId: ObjectId,
-  dueDate: Date,
-  description: String,
-  position: Number,
-  isArchived: Boolean,
-  fieldValues: [           // embedded custom field values
-    {
-      fieldId: ObjectId,
-      valueText: String,
-      valueNumber: Number,
-      valueDate: Date,
-      valueEnum: String
-    }
-  ],
-  asanaGid: String,
-  asanaProjectGid: String,
-  createdAt: Date,
-  updatedAt: Date
-}
-
-// subtasks
-{
-  _id: ObjectId,
-  cardId: ObjectId,
-  title: String,
-  assigneeId: ObjectId,
-  dueDate: Date,
-  isComplete: Boolean,
-  notes: String,
-  position: Number,
-  asanaGid: String,
-  createdAt: Date
-}
-
-// comments
-{
-  _id: ObjectId,
-  cardId: ObjectId,
-  authorId: ObjectId,       // null for migrated comments
-  body: String,
-  isMigrated: Boolean,
-  migratedAuthorName: String,
-  migratedAuthorEmail: String,
-  asanaGid: String,
-  createdAt: Date           // preserve original Asana timestamp on migration
-}
-
-// card_templates
-{
-  _id: ObjectId,
-  boardId: ObjectId,
-  name: String,
-  descriptionTemplate: String,
-  defaultColumnId: ObjectId,        // column the card lands in when applied (optional)
-  defaultAssigneeId: ObjectId,      // pre-assign to a user (optional)
-  dueDateOffsetDays: Number,        // due date = apply date + N days (optional)
-  defaultFieldValues: [             // pre-fill custom fields
-    {
-      fieldId: ObjectId,
-      valueText: String,
-      valueNumber: Number,
-      valueDate: Date,
-      valueEnum: String
-    }
-  ],
-  defaultSubtasks: [{ title: String, dueDateOffsetDays: Number }],
-  createdAt: Date
-}
+### Indexes (created on startup, in `server/db/index.js`)
+```
+users.email unique; users.microsoftId unique sparse
+columns {boardId, position}
+custom_fields {boardId, position}
+cards {boardId}; {columnId, position}; {assigneeId}; {asanaGid} sparse; {title: 'text'}
+subtasks {cardId, position}
+comments {cardId, createdAt}
 ```
 
 ---
 
 ## API Routes
 
-All routes prefixed with `/api`.
-Auth middleware applied to all routes except `/api/auth/*`.
+All under `/api`, behind auth middleware (stub). `requireAdmin` where noted.
 
-### Auth
 ```
-GET    /api/auth/microsoft          redirect to Microsoft login (MSAL)
-GET    /api/auth/microsoft/callback  MSAL callback, set session, redirect to app
-POST   /api/auth/logout
-GET    /api/auth/me                  return current user
-```
-
-### Boards
-```
-GET    /api/boards                   all boards (with column counts)
-GET    /api/boards/:id               board + columns + custom fields
-POST   /api/boards                   create board (admin only)
-PUT    /api/boards/:id               update name/description (admin only)
-DELETE /api/boards/:id               delete board (admin only)
-```
-
-### Columns
-```
-GET    /api/boards/:id/columns              all columns for board
-POST   /api/boards/:id/columns              create column
-PUT    /api/columns/:id                     update name/color
-DELETE /api/columns/:id                     delete column (must be empty)
-PUT    /api/boards/:id/columns/reorder      reorder { columnIds: [] }
+Boards     GET /boards · GET /boards/:id (board+columns+fields) · POST(admin) · PUT(admin) · DELETE(admin)
+Columns    GET/POST /boards/:id/columns · PUT /boards/:id/columns/reorder · PUT /columns/:id · DELETE /columns/:id
+Fields     GET/POST /boards/:id/fields · PUT /boards/:id/fields/reorder · PUT /fields/:id (name,type,options) · DELETE /fields/:id
+Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards/:id/cards
+           PUT /boards/:id/cards/reorder
+           GET /cards/:id (card+comments+subtasks) · PUT /cards/:id · DELETE(admin)
+           PUT /cards/:id/move {columnId,position} · PUT /cards/:id/move-board {boardId,columnId}
+           PUT /cards/:id/fields { fieldId: value, ... }
+Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · PUT /subtasks/:id · DELETE /subtasks/:id
+Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body} · DELETE(admin) /comments/:id
+Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
+Templates  GET/POST /boards/:id/templates · PUT /boards/:id/templates/reorder
+           PUT /templates/:id · DELETE /templates/:id · POST /templates/:id/apply {columnId?}
+Uploads    POST /uploads/presign {filename, contentType} → {uploadUrl, publicUrl, key}
+Health     GET /health  (no auth)
 ```
 
-### Custom Fields
-```
-GET    /api/boards/:id/fields               all fields for board
-POST   /api/boards/:id/fields               create field
-PUT    /api/fields/:id                      update field
-DELETE /api/fields/:id                      delete field
-PUT    /api/boards/:id/fields/reorder       reorder { fieldIds: [] }
-```
+`PUT /cards/:id` accepts: title, assigneeId, dueDate, description, descriptionHtml,
+isArchived, isCompleted (also stamps completedAt), tags.
 
-### Cards
-```
-GET    /api/boards/:id/cards                all cards for board
-  ?assignee=userId
-  ?column=columnId
-  ?archived=true/false
-  ?search=term
-GET    /api/cards/:id                       card detail + comments + subtasks
-POST   /api/boards/:id/cards                create card
-PUT    /api/cards/:id                       update card
-DELETE /api/cards/:id                       soft delete (admin only)
-PUT    /api/cards/:id/move                  move to column { columnId, position }
-PUT    /api/cards/:id/move-board            move to board { boardId, columnId }
-PUT    /api/boards/:id/cards/reorder        reorder within column
-```
+---
 
-### Card Field Values
-```
-PUT    /api/cards/:id/fields                set field values { fieldId: value, ... }
-```
+## Auth (current: STUB)
 
-### Subtasks
-```
-POST   /api/cards/:id/subtasks              create subtask
-PUT    /api/subtasks/:id                    update subtask
-DELETE /api/subtasks/:id                    delete subtask
-PUT    /api/cards/:id/subtasks/reorder      reorder { subtaskIds: [] }
-```
+`server/middleware/auth.js` attaches a hardcoded `DEV_USER` (admin) to `req.user` on
+every request — there is no real login yet. `requireAdmin` checks `req.user.role`.
+Replace this file with MSAL token verification when SSO is built (see Planned).
+The frontend has no login page; it loads straight into the app.
 
-### Comments
-```
-GET    /api/cards/:id/comments              all comments (oldest first)
-POST   /api/cards/:id/comments              add comment { body }
-PUT    /api/comments/:id                    edit comment (author or admin only)
-DELETE /api/comments/:id                    delete comment (admin only)
-```
+---
 
-### Users
-```
-GET    /api/users                           all users (for assignee dropdowns)
-POST   /api/users                           create user (admin only)
-PUT    /api/users/:id                       update user
-DELETE /api/users/:id                       deactivate user (admin only)
-```
+## Environment Variables
 
-### Templates
+`.env` locally (gitignored), Vercel project settings in prod. See `.env.example`.
+
 ```
-GET    /api/boards/:id/templates            all templates for board
-POST   /api/boards/:id/templates            create template
-PUT    /api/templates/:id                   update template
-DELETE /api/templates/:id                   delete template
-POST   /api/templates/:id/apply             create card from template { columnId? }
-                                             columnId overrides defaultColumnId if provided
-                                             dueDateOffsetDays applied from current date
-                                             defaultFieldValues copied to card fieldValues
+MONGODB_URI=                 # Atlas connection string (required)
+DNS_SERVERS=                 # optional, e.g. 1.1.1.1,8.8.8.8 — fixes querySrv ECONNREFUSED
+                             #   on flaky local networks (hotspot/VPN). Blank in prod.
+# AWS S3 (file/image uploads)
+AWS_REGION=us-east-1
+S3_BUCKET=townsquareignite
+S3_PREFIX=buyer-board/
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+# Asana (migration only)
+ASANA_PAT=
+ASANA_WORKSPACE_GID=461175262246056
+# Planned (not yet used by code)
+ANTHROPIC_API_KEY=
+MSAL_CLIENT_ID=  MSAL_TENANT_ID=  MSAL_CLIENT_SECRET=
+PORT=3001  CLIENT_URL=http://localhost:5173
 ```
 
 ---
 
-## Frontend Pages and Components
-
-### Pages
-- `/login` - Microsoft SSO login page
-- `/` - redirect to first board
-- `/boards/:id` - main kanban board view
-- `/boards/:id/settings` - board settings (columns, fields, templates)
-- `/cards/:id` - card detail (can also open as drawer over board)
-- `/admin/users` - user management (admin only)
-
-### Key Components
-
-**Board view (`/boards/:id`):**
-- Horizontal scrollable column layout
-- Each column shows: name, card count, cards
-- Cards show: title, assignee avatar, due date, health field color, comment count, subtask progress
-- Top bar: board name, filter by assignee, filter by health, search
-- Archived cards hidden by default, toggle to show
-
-**Card detail (modal/drawer):**
-- Title (editable inline)
-- Assignee (dropdown from users list)
-- Due date (date picker)
-- Column/status (dropdown)
-- Description (textarea)
-- Custom fields section (rendered by field type)
-- Subtasks list (checkboxes, add inline)
-- Comments (chronological, add at bottom)
-- Migrated comments visually distinct (muted, "Imported from Asana" label with original date and author)
-
-**Board settings:**
-- Columns tab: list with drag reorder, add/edit/delete
-- Fields tab: list with drag reorder, add/edit/delete, field type selector, enum options editor
-- Templates tab: create/edit/delete card templates
-  Each template stores: name, description pre-fill, default column, default assignee,
-  due date offset (days from apply date), default custom field values, default subtasks
-
-### Custom Field Rendering
-Render field values based on type:
-- `text` - plain text input
-- `number` - number input
-- `date` - date picker
-- `url` - clickable link plus text input for editing
-- `enum` - MUI Select dropdown from options list
-
-Health enum values map to MUI Chip colors:
-- Good - green (#4caf50)
-- Ok - orange (#ff9800)
-- Needs Work - red (#f44336)
-- Waiting on DCM - blue (#2196f3)
-
----
-
-## Auth Implementation
-
-Use MSAL (Microsoft Authentication Library), the same configuration as Lumina.
-Get the MSAL client ID, tenant ID, and redirect URI from Stephen Alba / Lumina config.
-
-```javascript
-// server/middleware/auth.js
-// Verify MSAL token on each request
-// Attach user to req.user
-// Create user record on first login if not exists
-```
-
-Session stored server-side. On first Microsoft login, create a user record in MongoDB
-using the Microsoft profile (name, email, microsoftId). Role defaults to 'member'.
-Admins must be promoted manually by another admin.
-
----
-
-## Drag and Drop
-
-Use `@dnd-kit/core` for:
-1. Reordering cards within a column
-2. Moving cards between columns
-3. Reordering columns on the board
-4. Reordering subtasks within a card
-5. Reordering columns and fields in settings
-
-On drag end, call the reorder API endpoint to persist new order.
-Optimistically update UI before API confirms.
-
----
-
-## Asana Migration Seeder
-
-`migration/asana-seed.js` reads a JSON export file (e.g. `asana-export-rachel.json`)
-and loads it into MongoDB.
-
-### Scope: everything is per-project (per-board)
-Columns, custom fields, and card templates all belong to a single board (`boardId`).
-Nothing is shared across boards. This mirrors Asana, where sections (columns) and
-task templates are project-scoped. Each imported project gets its own columns,
-fields, and templates — there is no global/shared set.
-
-### Seeder behavior
-- Idempotent, safe to re-run. Uses asanaGid as unique key, upserts on conflict.
-- Creates the board if it does not exist (matched by asanaProjectGid)
-- Creates columns from the export, preserving order
-- Creates custom fields from the export
-- Creates card templates from the export (see "Templates must be imported" below)
-- Cards previously in archive-named columns (cancelled, completed campaign) are seeded with isArchived: true
-- Creates cards, preserving createdAt timestamps
-- Creates subtasks per card
-- Creates comments per card, preserving createdAt and storing migratedAuthorName
-- Prints a seeder report on completion
-
-### Templates must be imported (TODO — not yet implemented)
-Card templates are NOT currently exported or seeded. They are project-scoped in
-Asana ("Task Templates"), so they must be migrated per project just like columns:
-- `migration/asana-migrate.js` must fetch each project's task templates from Asana
-  (`GET /projects/{project_gid}/task_templates`) and write them into the export JSON,
-  mapping each to our `card_templates` shape (name, descriptionTemplate,
-  defaultColumnId, defaultAssigneeId, dueDateOffsetDays, defaultFieldValues,
-  defaultSubtasks).
-- `migration/asana-seed.js` must upsert those templates onto the board (keyed by
-  asanaGid) alongside columns and fields.
-
-Until this is built, any sample templates created by hand are lost whenever the
-database is reset and re-seeded — they are not reproducible from the Asana export.
-
-### Column mapping prompt (interactive)
-```
-Board: The A Team (Team Rachel)
-Columns found:
-  [0] Sub 30 Day Accounts
-  [1] Edited and Under Pacing
-  [2] Edited and Under Performing
-  [3] Pacing and Performing Appropriately
-  [4] Not Serving on Google: Policy Violations
-  [5] Paused
-  [6] Pending Cancellation
-  [7] Cancelled Clients         <- mark as archive? (y/n)
-  [8] Completed Campaigns       <- mark as archive? (y/n)
-  [9] Projects
-  [10] Duplicate Task Board     <- skip? (y/n)
-```
-
----
-
-## Error Handling
-
-### Backend
-- All route handlers wrapped in try/catch
-- Central error middleware in `server/middleware/error.js`
-- Consistent error shape: `{ error: { message, code } }`
-- Log errors to console with stack trace in development
-
-### Frontend
-- Axios interceptor for 401 - redirect to login
-- Axios interceptor for 5xx - show toast error
-- MUI Snackbar for toast notifications
-- Never show raw error messages to users
-
----
-
-## Code Style
-
-- No TypeScript, plain JavaScript throughout
-- ES modules (import/export) on frontend, CommonJS (require) on backend
-- Async/await everywhere, no .then() chains
-- No inline styles, use MUI sx prop or styled()
-- Component files: PascalCase (BoardColumn.jsx)
-- Utility/hook files: camelCase (useBoard.js)
-- Keep components focused, if a component exceeds ~150 lines split it
-- No console.log in committed code, use a logger utility
-
----
-
-## What NOT to Build (Phase 1)
-
-Do not build these, they are explicitly out of scope:
-- Timeline, Gantt, or Calendar views
-- Dashboard or reporting/analytics
-- Automated rules or if-then triggers
-- Email or push notifications
-- Mobile-responsive layout
-- Asana-style My Tasks cross-board view
-- File/attachment uploads
-- @mentions in comments
-- Activity feed / audit log UI
-
----
-
-## Key Business Rules
-
-1. Cards are never hard-deleted (unless empty — no comments, subtasks, description, or field values). Otherwise they are archived (isArchived: true) via the Archive button in the card drawer. There are no archive columns.
-2. Comments are never deleted by members, admin can delete
-3. All users see all boards, no per-board access control
-4. Migrated comment timestamps are sacred, preserve exactly as exported from Asana
-5. Column names are not standardized, each team owns their own column structure
-6. The tool must stay simple. If a feature adds complexity without clear buyer value, do not build it.
-
----
-
-## Build Order
-
-Build in this sequence:
-
-1. Database - connect to MongoDB Atlas, create indexes
-2. Auth - MSAL login/logout/me endpoints and middleware
-3. Boards + Columns + Fields API - CRUD endpoints
-4. Cards API - CRUD, move, filter, search
-5. Comments + Subtasks API
-6. Migration seeder - load asana-export-rachel.json into MongoDB
-7. Frontend: Board view - columns and cards (read only first)
-8. Frontend: Drag and drop - move cards between columns
-9. Frontend: Card detail - comments, subtasks, fields
-10. Frontend: Board settings - manage columns, fields, templates
-11. Frontend: Auth - Microsoft SSO login, protected routes
-12. Frontend: Admin - user management
-
-Validate with real data (Team Rachel export) at step 6 before building frontend.
-
----
-
-## AI Agents
-
-The app uses Anthropic's SDK for all AI features. No other AI provider.
-Install: `npm install @anthropic-ai/sdk`
-
-All agents run server-side in Express route handlers. Never call the Anthropic API
-from the frontend directly.
-
-```javascript
-// server/lib/anthropic.js
-const Anthropic = require('@anthropic-ai/sdk');
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-module.exports = client;
-```
-
----
-
-### Agent 1: Asana Sync Agent
-
-Keeps the new tool in sync with Asana during the transition period when some buyers
-are still using Asana. Runs on-demand, never on a schedule.
-
-**When it runs:**
-- On login: sync the logged-in user's assigned cards
-- On viewing another user's board or filtering by another user: sync that user's cards
-
-**Sync lock (prevents double syncs):**
-
-Add these fields to the user document:
-```javascript
-{
-  lastSyncedAt: Date,        // last successful sync timestamp
-  syncStatus: String,        // 'idle' or 'in_progress'
-  syncStartedAt: Date,       // when current sync started (for timeout recovery)
-  syncSessionId: String      // login session that started the sync
-}
-```
-
-**Sync decision logic:**
-```
-Before syncing User X's cards:
-
-1. If syncStatus = 'in_progress' AND syncStartedAt > 10 minutes ago
-     -> assume crashed, reset syncStatus to 'idle', continue
-
-2. If syncStatus = 'in_progress' AND syncStartedAt < 10 minutes ago
-     -> another session is syncing, skip
-
-3. If lastSyncedAt exists AND was synced during THIS login session
-     -> already fresh this session, skip
-
-4. Otherwise:
-     -> set syncStatus = 'in_progress', syncStartedAt = now, syncSessionId = current session
-     -> fetch Asana changes for User X since lastSyncedAt
-     -> apply updates to MongoDB
-     -> set syncStatus = 'idle', lastSyncedAt = now
-```
-
-**What the agent syncs per user:**
-- New comments on cards assigned to that user (append only, never overwrite)
-- Field changes: assignee, due date, column/section, description
-- New subtasks added to their cards
-- Completion status changes
-
-**Conflict resolution:**
-If a card was updated in BOTH Asana and the new tool since last sync:
-- Comments: append both, label source ("Imported from Asana" vs no label for native)
-- Field changes: last-write-wins based on updatedAt timestamp
-- Never silently overwrite, always append comments
-
-**Implementation:**
-```javascript
-// server/agents/syncAgent.js
-
-const anthropic = require('../lib/anthropic');
-
-async function syncUserCards(userId, sessionId) {
-  const db = getDb();
-  const user = await db.collection('users').findOne({ _id: userId });
-
-  // Check sync lock
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  if (
-    user.syncStatus === 'in_progress' &&
-    user.syncStartedAt > tenMinutesAgo
-  ) {
-    return { skipped: true, reason: 'sync already in progress' };
-  }
-
-  // Check if already synced this session
-  if (user.syncSessionId === sessionId && user.syncStatus === 'idle') {
-    return { skipped: true, reason: 'already synced this session' };
-  }
-
-  // Acquire lock
-  await db.collection('users').updateOne(
-    { _id: userId },
-    {
-      $set: {
-        syncStatus: 'in_progress',
-        syncStartedAt: new Date(),
-        syncSessionId: sessionId
-      }
-    }
-  );
-
-  try {
-    const since = user.lastSyncedAt || new Date('2020-01-01');
-
-    // Use Claude to intelligently process and map Asana changes
-    // Claude handles edge cases, detects conflicts, formats notes cleanly
-    const asanaChanges = await fetchAsanaChangesForUser(user.asanaGid, since);
-
-    if (asanaChanges.length > 0) {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: `You are a data sync agent for Ignite Buyer Board.
-          You receive a list of Asana changes and a list of existing MongoDB records.
-          Your job is to determine what needs to be created, updated, or flagged as a conflict.
-          Respond only in JSON. Never overwrite existing comments, only append.
-          Label all imported content with isMigrated: true.`,
-        messages: [
-          {
-            role: 'user',
-            content: JSON.stringify({
-              asanaChanges,
-              instructions: 'Return { toInsert: [], toUpdate: [], conflicts: [] }'
-            })
-          }
-        ]
-      });
-
-      const plan = JSON.parse(response.content[0].text);
-      await applySync(plan, db);
-    }
-
-    // Release lock
-    await db.collection('users').updateOne(
-      { _id: userId },
-      { $set: { syncStatus: 'idle', lastSyncedAt: new Date() } }
-    );
-
-    return { synced: true, changes: asanaChanges.length };
-
-  } catch (err) {
-    // Release lock on error
-    await db.collection('users').updateOne(
-      { _id: userId },
-      { $set: { syncStatus: 'idle' } }
-    );
-    throw err;
-  }
-}
-
-module.exports = { syncUserCards };
-```
-
-**API routes for sync:**
-```
-POST /api/sync/me              trigger sync for logged-in user (called on login)
-POST /api/sync/:userId         trigger sync for another user (called on board view)
-GET  /api/sync/:userId/status  check sync status for a user
-```
-
-**When to disable the Sync Agent:**
-When the team is fully migrated and Asana is retired, set an env variable:
-```
-ASANA_SYNC_ENABLED=false
-```
-The sync routes return early without calling Asana. The Asana PAT can then be revoked.
-
----
-
-### Agent 2: Optimization Note Agent
-
-Helps buyers write structured optimization notes faster. Buyer pastes raw notes,
-agent formats them cleanly, suggests a health status update, and flags if a follow-up
-subtask is needed.
-
-**When it runs:** buyer clicks "AI assist" next to the comment box on a card.
-
-**What it receives:**
-- The raw note the buyer typed
-- The card's current health status
-- The last 3 comments for context
-
-**What it returns:**
-- A cleaned, structured version of the note
-- A suggested health status (Good / Ok / Needs Work / Waiting on DCM)
-- A suggested subtask title if follow-up is needed (or null)
-
-**Implementation:**
-```javascript
-// server/agents/noteAgent.js
-
-async function processOptimizationNote(rawNote, cardContext) {
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
-    system: `You are an assistant for digital advertising buyers at Ignite.
-      You help format optimization notes clearly and consistently.
-      Keep the buyer's voice. Do not add information they did not provide.
-      Respond only in JSON.`,
-    messages: [
-      {
-        role: 'user',
-        content: JSON.stringify({
-          rawNote,
-          currentHealth: cardContext.health,
-          recentComments: cardContext.lastComments,
-          instructions: `Return {
-            formattedNote: string,
-            suggestedHealth: 'Good' | 'Ok' | 'Needs Work' | 'Waiting on DCM' | null,
-            suggestedSubtask: string | null
-          }`
-        })
-      }
-    ]
-  });
-
-  return JSON.parse(response.content[0].text);
-}
-
-module.exports = { processOptimizationNote };
-```
-
-**API route:**
-```
-POST /api/agents/note     { rawNote, cardId } -> { formattedNote, suggestedHealth, suggestedSubtask }
-```
-
-The buyer always reviews and confirms before anything is saved. The agent suggests,
-the buyer decides.
-
----
-
-### Agent 3: Account Health Agent
-
-Reads a card's full comment history and surfaces a plain-English summary of what
-has been happening with the account. Useful when a buyer inherits an account or
-needs to quickly catch up on history.
-
-**When it runs:** buyer clicks "Summarize history" on a card detail view.
-
-**What it receives:**
-- All comments on the card (with dates and authors)
-- All subtasks (completed and pending)
-- Current field values (health, assignee, due date)
-
-**What it returns:**
-- A 3-5 sentence plain English summary
-- Key dates (last optimization, last DCM contact, etc.)
-- Any open issues flagged
-
-**Implementation:**
-```javascript
-// server/agents/healthAgent.js
-
-async function summarizeAccountHistory(card, comments, subtasks) {
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
-    system: `You are an assistant for digital advertising buyers at Ignite.
-      You summarize account optimization history clearly and concisely.
-      Focus on what was done, when, and what is still open.
-      Write in plain English, 3-5 sentences max.
-      Respond only in JSON.`,
-    messages: [
-      {
-        role: 'user',
-        content: JSON.stringify({
-          cardTitle: card.title,
-          comments: comments.map(c => ({
-            date: c.createdAt,
-            author: c.migratedAuthorName || 'buyer',
-            body: c.body
-          })),
-          subtasks: subtasks.map(s => ({
-            title: s.title,
-            isComplete: s.isComplete,
-            dueDate: s.dueDate
-          })),
-          instructions: `Return {
-            summary: string,
-            lastOptimizationDate: string | null,
-            openIssues: [string],
-            recommendedAction: string | null
-          }`
-        })
-      }
-    ]
-  });
-
-  return JSON.parse(response.content[0].text);
-}
-
-module.exports = { summarizeAccountHistory };
-```
-
-**API route:**
-```
-GET /api/agents/health/:cardId   -> { summary, lastOptimizationDate, openIssues, recommendedAction }
-```
-
----
-
-### Agent Execution: Parallel vs Sequential
-
-```
-PARALLEL (independent data, run at same time):
-  Login sync (my cards) + page load = user reaches board with fresh data
-
-  Multiple users logging in simultaneously:
-    User A sync -> User A's cards only
-    User B sync -> User B's cards only
-    No overlap, fully parallel
-
-SEQUENTIAL (depends on previous result):
-  Note Agent -> buyer reviews -> save comment
-  Health Agent -> buyer reads -> no action needed
-
-  Sync Agent on board view:
-    Step 1: check sync lock (must complete before step 2)
-    Step 2: fetch Asana changes (must complete before step 3)
-    Step 3: apply to MongoDB (must complete before releasing lock)
-```
-
----
-
-### Environment Variables for Agents
-
-Never commit secrets to the repo. Store all secrets in environment variables.
-Reference `.env.example` for the full list of required variables.
-
-On Vercel: set these in the Vercel project dashboard under Settings, Environment Variables.
-Locally: copy `.env.example` to `.env` and fill in real values. `.env` is gitignored.
-
-```
-ANTHROPIC_API_KEY=        # Anthropic API key
-ASANA_SYNC_ENABLED=true   # set to false when Asana is retired
-ASANA_WORKSPACE_GID=      # 461175262246056
-```
-
-ASANA_PAT is a secret. Store it only in Vercel environment variables or your local .env file.
-Never put it in any file that gets committed to git.
-Rotate the PAT immediately if it is ever exposed (committed, screenshot, shared in chat).
-
+## Frontend
+
+### Pages / routes
+- `/` → redirect to last-viewed board (localStorage) or `/dashboard`
+- `/dashboard` → home: greeting + Projects (boards) + People (users) widgets
+- `/boards/:id` → kanban board
+- `/boards/:id/settings` → Columns / Fields / Templates tabs
+- `/admin/users` → user management
+
+### Layout (app shell — important)
+`App.jsx` `SidebarLayout` is a viewport-locked shell: `position: fixed; inset: 0;
+display: flex; overflow: hidden`. Sidebar fixed left; main area `flex:1; minWidth:0`
+so the columns container (`overflow-x:auto`) scrolls **horizontally on its own**.
+The page never scrolls. The card drawer is `position: fixed` to the viewport's right.
+This 3-panel behavior (fixed sidebar, scrolling columns, fixed drawer) must hold no
+matter how many/wide the columns are.
+
+### Key components
+- **BoardCard / CardFace / ArchivedCard** — board cards. `CardFace` is the shared
+  visual; `BoardCard` adds dnd-kit `useSortable`; `ArchivedCard` is read-only & NOT
+  sortable (so large archives render fast). Cards show: tag glyphs (colored `Sell`
+  icons, name on hover), Health chip, title (strikethrough + ✓ if completed),
+  assignee avatar (per-user color), due date (red if overdue), subtask & comment counts.
+- **CardDrawer** — right drawer. Mark complete toggle, Status/Assignee/Due, Tags
+  (combobox), custom fields (only those with a value, "+ Add field" to reveal more),
+  Description (rich HTML render; click-to-edit when no inline images), Attachments
+  (non-inline files: image thumbnails + file tiles), Subtasks, Comments. Move-to-
+  project dialog. Archived OR completed cards are read-only (links/images still clickable).
+- **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
+  inside Collapsible "See more"). Migrated comments show "Imported from Asana".
+- **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
+  presigned S3 upload → inline. Outputs HTML.
+- **RichContent** — sanitized (DOMPurify) render of migrated/edited HTML with inline
+  images + hover-download.
+- **Collapsible** — "See more/less" for long content (re-measures after images load).
+- **utils/tagColor** — deterministic pastel color per tag name (chips + glyphs).
+- **utils/userColor** — deterministic per-user avatar color (keyed email→name),
+  consistent everywhere.
+
+### Custom field rendering (by type)
+text → input · number → number input · date → date picker · url → text input,
+clickable link when shown · enum → MUI Select. Health enum chip colors:
+Good `#4caf50`, Ok `#ff9800`, Needs Work `#f44336`, Waiting on DCM `#2196f3`.
 
 ---
 
 ## Design
 
-The UI should feel familiar to Asana users. Buyers will use both tools side by side
-during the transition period, so visual similarity reduces confusion and speeds adoption.
-Reference Asana's board view as the design benchmark, not a pixel-perfect clone but
-close enough that an Asana user feels immediately at home.
+Familiar to Asana users (board reference), but with our color rules.
 
-### Layout
+- **Accent / brand color: BLUE `#4573d2`** — buttons, avatars, active states,
+  toggles, focused inputs, selected card. **Red is reserved strictly for errors/
+  alerts** (overdue dates, "Needs Work", delete). Do not use red for normal UI.
+- Dark sidebar `#1d1f25` (both themes). Light bg `#f9f9f9`, columns `#f1f1f1`,
+  cards `#fff`. Dark: bg `#1a1a1a`, columns `#242424`, cards `#2d2d2d`.
+- Tags: small colored `Sell` glyphs on cards (name on hover); colored chips in the
+  drawer combobox. Color derived from tag name (consistent everywhere).
+- Users: colored initial avatars, one consistent color per person (no photos yet).
+- Long comments/descriptions truncate with "See more".
+- Completed cards: green ✓ + strikethrough title; hidden by default (board "Tasks"
+  filter: Incomplete / All / Completed).
+- Theming: MUI light/dark in `theme.js`, primary `#4573d2`; user preference in
+  AppContext (defaults to dark / OS pref), persisted in localStorage.
 
-Follow Asana's board layout closely:
-- Dark left sidebar for navigation (board list, user menu)
-- Top bar with board name, filters, and search
-- Main area: horizontal scrollable columns
-- Each column has a header with name and card count
-- Cards are compact in board view, full detail opens in a right-side drawer (like Asana)
-- Drawer overlays the board without navigating away
-
-### Colors and Typography
-
-- Dark sidebar: #1d1f25 (Asana's near-black sidebar)
-- Sidebar text: white and light gray
-- Main background: #f9f9f9 (off-white, not pure white)
-- Column headers: white cards with subtle shadow
-- Cards: white with subtle border and hover shadow
-- Primary action color: #f06a6a (Asana's coral/salmon red) for buttons and highlights
-- Font: use MUI default (Roboto), same weight and sizing as Asana
-
-### Cards (board view)
-
-Each card in the board shows:
-- Title (bold, truncated at 2 lines)
-- Assignee avatar (circle with initials, bottom left)
-- Due date (bottom, red if overdue)
-- Health field as a colored MUI Chip (Good=green, Ok=orange, Needs Work=red, Waiting on DCM=blue)
-- Comment count icon (bottom right)
-- Subtask progress (e.g. 3/5 checkmark icon, bottom right)
-
-### Card detail (right drawer)
-
-Matches Asana's task detail panel:
-- Title at top, editable inline on click
-- Assignee, due date, column status as field rows on the left
-- Custom fields below in the same field row style
-- Description text area in the middle
-- Subtasks section below description
-- Comments/activity at the bottom
-- "Imported from Asana" label on migrated comments, slightly muted style
-
-### Columns
-
-- White column headers with column name and card count badge
-- Light gray column background to separate from cards
-- Add card button at bottom of each column
-- Drag handle visible on hover
-
-### Do not replicate
-
-These Asana UI elements should NOT be built:
-- Top navigation tabs (Overview, List, Timeline, Calendar, Workflow, Dashboard)
-- Portfolio and Goals sidebar items
-- Inbox
-- My Tasks view
-- Any premium/upgrade prompts
+Do NOT build: top nav tabs (Timeline/Calendar/etc.), Portfolios/Goals/Inbox,
+My Tasks, premium prompts, mobile-responsive layout.
 
 ---
 
-## Theming
+## Files & Images (S3)
 
-The app supports both light and dark themes. Users pick their own preference and it
-persists across sessions. Never force a theme on anyone.
+- Bucket `townsquareignite`, prefix `buyer-board/`, region `us-east-1`. **Public-read
+  for now** (planned: move to a private bucket via presigned/CloudFront later).
+- IAM user scoped to `s3:PutObject, s3:GetObject` on `buyer-board/*` (add
+  `s3:DeleteObject` when remove-attachment is built). Bucket CORS must allow browser
+  `PUT`/`GET` from the app origins (localhost:5173, *.vercel.app).
+- **Two kinds of attachments:** (1) **inline images** embedded in comment/description
+  HTML (`<img>` rewritten to S3 URLs); (2) **standalone files** (any type — images,
+  Excel, PDF…) shown in the card's Attachments section. The `inline` flag separates them.
+- **Uploads** (native, in the rich editor): browser asks `/api/uploads/presign`, then
+  PUTs the file directly to S3 (avoids Vercel's body-size limit), stores the public URL.
 
-### Theme toggle
-- Small toggle button in the top bar or user menu (sun/moon icon)
-- Preference saved to the user record in MongoDB (theme: 'light' or 'dark')
-- Loaded on login so the user always gets their preferred theme immediately
-- Defaults to the user's OS preference on first login (prefers-color-scheme)
+---
 
-### Light theme
-Close to Asana's default light UI:
-- Sidebar: #1d1f25 (dark sidebar stays dark even in light mode, same as Asana)
-- Main background: #f9f9f9
-- Column background: #f1f1f1
-- Cards: #ffffff with subtle border
-- Text: #1d1f25
-- Primary action: #f06a6a
+## Migration (Asana → MongoDB)
 
-### Dark theme
-- Sidebar: #1d1f25 (unchanged, already dark)
-- Main background: #1a1a1a
-- Column background: #242424
-- Cards: #2d2d2d with subtle border
-- Text: #e0e0e0
-- Primary action: #f06a6a (same coral, works on both themes)
+Standalone scripts in `migration/` (read Asana, write JSON, then seed Mongo). Both
+honor `DNS_SERVERS`. The export JSON is gitignored.
 
-### Implementation
-Use MUI's built-in theming system with createTheme and ThemeProvider.
-Define both themes in `client/src/theme.js` and switch based on user preference.
+### `asana-migrate.js` (Asana → `asana-export-rachel.json`)
+- Hardcoded to one project GID; writes into `migration/` regardless of CWD.
+- **Parallel** worker pool (`MIGRATE_CONCURRENCY`, default 6) + a **global rate
+  limiter** (`RATE_LIMIT_MS`, default 150) so Asana calls stay spaced under concurrency.
+- Per task captures: fields, assignee, due, tags, `is_completed`/`completed_at`,
+  custom fields, comments (`text` + `html_text`), subtasks, `html_notes`.
+- **Attachments**: uploads EVERY Asana-hosted file (images + docs) to S3 with a
+  deterministic key `buyer-board/{taskGid}/{attGid}-{name}`. **Skips re-upload if the
+  object already exists** (HeadObject) → idempotent/resumable. Then **rewrites inline
+  `<img data-asana-gid>` src in comment/description HTML to the S3 URLs**, and flags
+  which attachments are inline.
+- External-link attachments (Google Drive/Dropbox) have no bytes → skipped.
 
-```javascript
-// client/src/theme.js
-import { createTheme } from '@mui/material/styles';
+### `asana-seed.js` (JSON → MongoDB, idempotent, upsert by `asanaGid`)
+- Creates board (by asanaProjectGid), columns (preserve order), custom fields —
+  including per-card "disconnected" fields not in the project (e.g. SEM-KPI; enum vs
+  url vs text inferred from values).
+- `--auto` skips prompts: archive columns matching `cancelled`/`completed campaign`,
+  skip `duplicate`. **Archived = archive-named column only** (NOT completion).
+- Seeds cards (preserve createdAt), subtasks, comments (preserve timestamps,
+  `migratedAuthorName`, `bodyHtml`), tags, attachments, `isCompleted/completedAt`,
+  `descriptionHtml`.
+- ⚠️ Currently `$set`s `attachments` (overwrites). When native uploads exist, the
+  seeder MUST merge (keep attachments without `asanaGid`).
 
-const commonTokens = {
-  palette: {
-    primary: { main: '#f06a6a' },
-  },
-};
+---
 
-export const lightTheme = createTheme({
-  ...commonTokens,
-  palette: {
-    ...commonTokens.palette,
-    mode: 'light',
-    background: { default: '#f9f9f9', paper: '#ffffff' },
-    text: { primary: '#1d1f25' },
-  },
-});
+## Key Business Rules
 
-export const darkTheme = createTheme({
-  ...commonTokens,
-  palette: {
-    ...commonTokens.palette,
-    mode: 'dark',
-    background: { default: '#1a1a1a', paper: '#2d2d2d' },
-    text: { primary: '#e0e0e0' },
-  },
-});
+1. **Completed ≠ Archived.** Completion is a per-card flag (✓), shown but **hidden by
+   default** (Tasks filter). Archived = in an archive column / manually archived,
+   shown only via the archive toggle. A card can be both.
+2. Cards are hard-deleted only if empty (no description, fields, comments, subtasks);
+   otherwise archived. Admin-only delete.
+3. **Completed and archived cards are read-only** in the drawer (re-open via Mark
+   incomplete / Unarchive); links & images stay clickable.
+4. Comments: editable by author or admin (API exists); never hard-deleted by members,
+   admin can delete. Migrated comment timestamps are sacred.
+5. Columns/fields/templates are **per board**; column names are not standardized.
+6. All users see all boards (no per-board access control).
+7. Keep it simple — no feature without clear buyer value.
+
+---
+
+## Deployment (Vercel)
+
+- `vercel.json`: `buildCommand` builds the client → `outputDirectory: client/dist`;
+  rewrites `/api/(.*)` → `/api` (the serverless function `api/index.js` = the Express
+  app) and `/(.*)` → `/index.html` (SPA).
+- Client API base URL is relative `/api` (works in prod; dev uses Vite's `/api` proxy
+  to `:3001`).
+- Set env vars in Vercel (`MONGODB_URI` required; AWS vars for uploads). Atlas Network
+  Access must allow `0.0.0.0/0` (serverless IPs are dynamic). Don't set `DNS_SERVERS`.
+
+---
+
+## Code Style
+Plain JS. ES modules (frontend) / CommonJS (backend). Async/await. MUI `sx`, no inline
+styles. PascalCase components, camelCase hooks/utils. Split components past ~150 lines.
+All route handlers try/catch → central error middleware; error shape
+`{ error: { message, code } }`. Axios interceptor: 401 → login (when auth exists),
+5xx → toast. Never show raw errors to users.
+
+---
+
+## Planned / Not Yet Built
+
+- **Microsoft SSO (MSAL):** replace the auth stub; create users on first login; load
+  user theme. Until then everyone is the admin `DEV_USER`.
+- **Owner-only edit permissions** (cards/comments editable only by owner) — waits on real auth.
+- **User profile photos** — come with SSO; show photo, fall back to colored initials.
+- **Rich text Phase 2:** edit comments (UI; API exists), edit image-descriptions
+  (currently read-only), add/remove attachments in the Attachments section (needs
+  `s3:DeleteObject` + seeder merge). Optional: slash menu, @mentions.
+- **Import Asana task templates** (templates are not exported/seeded yet).
+- **Private S3 bucket** via presigned/CloudFront (currently public).
+- **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during
+  transition; (2) Optimization Note assistant — format a buyer's note + suggest health/
+  follow-up; (3) Account Health summary — summarize a card's comment history. All would
+  run server-side; design lives in SPEC.md / git history.
+- Out of scope (Phase 1): Timeline/Calendar/Dashboard analytics, automation rules,
+  notifications, mobile layout, cross-board My Tasks, @mentions, activity feed.
 ```
-
-Store active theme in AuthContext so it is available everywhere without prop drilling.
