@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Drawer, Box, Typography, TextField, Select, MenuItem,
   FormControl, InputLabel, CircularProgress, Divider, IconButton,
@@ -15,12 +15,14 @@ import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
-import { getCard, updateCard, setCardFields, deleteCard, moveCardBoard } from '../../api/cards';
+import { getCard, updateCard, setCardFields, deleteCard, moveCardBoard, addCardAttachment, removeCardAttachment } from '../../api/cards';
+import { uploadFile } from '../../api/uploads';
 import { getBoards, getBoard } from '../../api/boards';
 import CardSubtasks from './CardSubtasks';
 import CardComments from './CardComments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
+import RichEditor from '../common/RichEditor';
 import Collapsible from '../common/Collapsible';
 import { tagColor } from '../../utils/tagColor';
 
@@ -60,6 +62,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
+  const [descHtml, setDescHtml] = useState('');
   // Custom fields the user revealed on this card despite having no value yet.
   const [extraFieldIds, setExtraFieldIds] = useState([]);
   const [addFieldAnchor, setAddFieldAnchor] = useState(null);
@@ -149,6 +152,31 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
     await deleteCard(card._id);
     onCardDelete?.(card._id);
     onClose();
+  };
+
+  // Attachments (standalone files, any type)
+  const attachInputRef = useRef(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+
+  const handleAddAttachment = async (file) => {
+    if (!file) return;
+    setUploadingAttachment(true);
+    try {
+      const url = await uploadFile(file);
+      const updated = await addCardAttachment(card._id, { name: file.name, url, isImage: file.type?.startsWith('image/') });
+      setCard(prev => ({ ...prev, attachments: updated.attachments }));
+      onCardUpdate?.(updated);
+    } catch {
+      window.alert('Upload failed.');
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const handleRemoveAttachment = async (url) => {
+    const updated = await removeCardAttachment(card._id, url);
+    setCard(prev => ({ ...prev, attachments: updated.attachments }));
+    onCardUpdate?.(updated);
   };
 
   // Move card to another board (project)
@@ -549,101 +577,119 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
 
             {/* Description */}
             <Typography variant="subtitle2" fontWeight={700} mb={1}>Description</Typography>
-            {(() => {
-              const descHasImages = card.descriptionHtml?.includes('<img');
-              // Locked when the card is read-only, or the description has inline
-              // images (plain-text editing would drop them — Phase 2 rich editor).
-              const locked = readOnly || descHasImages;
-
-              if (editingDesc && !locked) {
-                return (
-                  <TextField
-                    autoFocus multiline minRows={3} fullWidth size="small"
-                    defaultValue={card.description || ''}
-                    onBlur={e => {
-                      if (e.target.value !== card.description) {
-                        // Clear the migrated HTML so the new plain text is shown.
-                        saveField({ description: e.target.value, descriptionHtml: null });
-                      }
+            {editingDesc && !readOnly ? (
+              <Box>
+                <RichEditor key={`desc-${card._id}`} value={descHtml} onChange={setDescHtml} minHeight={140} />
+                <Box sx={{ display: 'flex', gap: 1, mt: 0.75 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={async () => {
+                      const text = descHtml.replace(/<[^>]*>/g, '').trim();
+                      await saveField({ description: text, descriptionHtml: descHtml });
                       setEditingDesc(false);
                     }}
-                    placeholder="Add a description…"
-                  />
-                );
-              }
-
-              return (
-                <Box
-                  onClick={() => { if (!locked) setEditingDesc(true); }}
-                  sx={{
-                    minHeight: 48, p: 1, borderRadius: 1,
-                    cursor: locked ? 'default' : 'text',
-                    color: (card.description || card.descriptionHtml) ? 'text.primary' : 'text.disabled',
-                    whiteSpace: card.descriptionHtml ? 'normal' : 'pre-wrap',
-                    '&:hover': { bgcolor: locked ? 'transparent' : 'action.hover' },
-                  }}
-                >
-                  <Collapsible collapsedHeight={280}>
-                    {card.descriptionHtml
-                      ? <RichContent html={card.descriptionHtml} />
-                      : (card.description ? <Linkify text={card.description} /> : 'Add a description…')}
-                  </Collapsible>
-                  {descHasImages && (
-                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 1 }}>
-                      Editing descriptions with images is coming with rich text — read-only for now.
-                    </Typography>
-                  )}
+                  >
+                    Save
+                  </Button>
+                  <Button size="small" onClick={() => setEditingDesc(false)}>Cancel</Button>
                 </Box>
-              );
-            })()}
+              </Box>
+            ) : (
+              <Box
+                onClick={() => {
+                  if (readOnly) return;
+                  setDescHtml(card.descriptionHtml || card.description || '');
+                  setEditingDesc(true);
+                }}
+                sx={{
+                  minHeight: 48, p: 1, borderRadius: 1,
+                  cursor: readOnly ? 'default' : 'text',
+                  color: (card.description || card.descriptionHtml) ? 'text.primary' : 'text.disabled',
+                  whiteSpace: card.descriptionHtml ? 'normal' : 'pre-wrap',
+                  '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover' },
+                }}
+              >
+                <Collapsible collapsedHeight={280}>
+                  {card.descriptionHtml
+                    ? <RichContent html={card.descriptionHtml} />
+                    : (card.description ? <Linkify text={card.description} /> : 'Add a description…')}
+                </Collapsible>
+              </Box>
+            )}
 
             <Divider sx={{ my: 2 }} />
 
-            {/* Attachments — only files NOT shown inline in the description/comments */}
+            {/* Attachments — standalone files (not the inline images in text). */}
             {(() => {
               const files = (card.attachments || []).filter(a => !a.inline);
-              if (!files.length) return null;
+              if (!files.length && readOnly) return null;
               return (
               <>
                 <Typography variant="subtitle2" fontWeight={700} mb={1}>
-                  Attachments ({files.length})
+                  Attachments{files.length ? ` (${files.length})` : ''}
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
                   {files.map((att, i) => (
-                    <Tooltip key={att.url || i} title={att.name || 'attachment'}>
+                    <Box key={att.url || i} sx={{ position: 'relative', width: 96, height: 96 }}>
+                      <Tooltip title={att.name || 'attachment'}>
+                        <Box
+                          component="a"
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: '100%', height: '100%', borderRadius: 1,
+                            border: '1px solid', borderColor: 'divider', overflow: 'hidden',
+                            textDecoration: 'none', color: 'text.secondary',
+                            p: att.isImage ? 0 : 1,
+                            '&:hover': { borderColor: '#4573d2' },
+                          }}
+                        >
+                          {att.isImage ? (
+                            <Box component="img" src={att.url} alt={att.name || ''} loading="lazy"
+                              sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          ) : (
+                            <Box sx={{ textAlign: 'center', overflow: 'hidden', width: '100%' }}>
+                              <InsertDriveFileOutlinedIcon sx={{ fontSize: 30 }} />
+                              <Typography sx={{ fontSize: 9, lineHeight: 1.2, mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {att.name}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      </Tooltip>
+                      {!readOnly && (
+                        <Tooltip title="Remove">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveAttachment(att.url)}
+                            sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(0,0,0,0.6)', color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' } }}
+                          >
+                            <CloseIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  ))}
+                  {!readOnly && (
+                    <Tooltip title="Add file">
                       <Box
-                        component="a"
-                        href={att.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        onClick={() => attachInputRef.current?.click()}
                         sx={{
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: 96, height: 96, borderRadius: 1,
-                          border: '1px solid', borderColor: 'divider', overflow: 'hidden',
-                          textDecoration: 'none', color: 'text.secondary',
-                          p: att.isImage ? 0 : 1,
-                          '&:hover': { borderColor: '#4573d2' },
+                          width: 96, height: 96, borderRadius: 1, cursor: 'pointer',
+                          border: '1px dashed', borderColor: 'divider', color: 'text.secondary',
+                          '&:hover': { borderColor: '#4573d2', color: '#4573d2' },
                         }}
                       >
-                        {att.isImage ? (
-                          <Box
-                            component="img"
-                            src={att.url}
-                            alt={att.name || ''}
-                            loading="lazy"
-                            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                          />
-                        ) : (
-                          <Box sx={{ textAlign: 'center', overflow: 'hidden', width: '100%' }}>
-                            <InsertDriveFileOutlinedIcon sx={{ fontSize: 30 }} />
-                            <Typography sx={{ fontSize: 9, lineHeight: 1.2, mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {att.name}
-                            </Typography>
-                          </Box>
-                        )}
+                        {uploadingAttachment ? <CircularProgress size={22} /> : <AddIcon />}
                       </Box>
                     </Tooltip>
-                  ))}
+                  )}
+                  <input ref={attachInputRef} type="file" hidden
+                    onChange={e => { handleAddAttachment(e.target.files?.[0]); e.target.value = ''; }} />
                 </Box>
                 <Divider sx={{ my: 2 }} />
               </>

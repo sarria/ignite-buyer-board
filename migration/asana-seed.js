@@ -285,9 +285,18 @@ async function main() {
     const tags = (card.tags || []).map(t => (typeof t === 'string' ? t : t.name)).filter(Boolean);
 
     // Image attachments already uploaded to S3 during export.
-    const attachments = (card.attachments || [])
+    const migratedAttachments = (card.attachments || [])
       .filter(a => a && a.url)
       .map(a => ({ name: a.name, url: a.url, isImage: !!a.is_image, inline: !!a.inline, createdAt: a.created_at ? new Date(a.created_at) : null }));
+
+    // Preserve user-uploaded (native) attachments on re-seed — those live under
+    // the buyer-board/uploads/ prefix and aren't in the Asana export.
+    const existingCard = await db.collection('cards').findOne(
+      { asanaGid: card.asana_gid },
+      { projection: { attachments: 1 } }
+    );
+    const nativeAttachments = (existingCard?.attachments || []).filter(a => a?.url?.includes('/uploads/'));
+    const attachments = [...migratedAttachments, ...nativeAttachments];
 
     const assigneeId = card.assignee?.asana_gid ? assigneeMap[card.assignee.asana_gid] : null;
 

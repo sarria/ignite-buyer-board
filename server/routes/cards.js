@@ -15,6 +15,8 @@ router.delete('/:id', requireAdmin, c.deleteCard);
 router.put('/:id/move', c.moveCard);
 router.put('/:id/move-board', c.moveCardToBoard);
 router.put('/:id/fields', c.setFieldValues);
+router.post('/:id/attachments', c.addAttachment);
+router.delete('/:id/attachments', c.removeAttachment);
 
 // Subtasks nested under card
 router.post('/:id/subtasks', subtaskCtrl.createSubtask);

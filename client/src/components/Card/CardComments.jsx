@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Box, Typography, Button, Avatar, Divider, Chip } from '@mui/material';
-import { createComment } from '../../api/comments';
+import { Box, Typography, Button, Avatar, Divider, Chip, IconButton, Tooltip } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import { createComment, updateComment } from '../../api/comments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
 import RichEditor from '../common/RichEditor';
@@ -28,6 +29,20 @@ export default function CardComments({ cardId, comments, onChange }) {
   const [html, setHtml] = useState('');
   const [saving, setSaving] = useState(false);
   const [editorKey, setEditorKey] = useState(0); // bump to reset the editor
+  const [editingId, setEditingId] = useState(null);
+  const [editHtml, setEditHtml] = useState('');
+
+  const startEdit = (comment) => {
+    setEditingId(comment._id);
+    setEditHtml(comment.bodyHtml || comment.body || '');
+  };
+
+  const handleSaveEdit = async (comment) => {
+    const text = editHtml.replace(/<[^>]*>/g, '').trim();
+    const updated = await updateComment(comment._id, { body: text, bodyHtml: editHtml });
+    onChange(comments.map(c => (c._id === updated._id ? updated : c)));
+    setEditingId(null);
+  };
 
   const handleSubmit = async () => {
     if (!hasContent(html)) return;
@@ -82,24 +97,41 @@ export default function CardComments({ cardId, comments, onChange }) {
                     {comment.isMigrated ? comment.migratedAuthorName : 'You'}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {formatDate(comment.createdAt)}
+                    {formatDate(comment.createdAt)}{comment.editedAt ? ' · edited' : ''}
                   </Typography>
                   {comment.isMigrated && (
                     <Chip label="Imported from Asana" size="small" sx={{ height: 16, fontSize: 10, opacity: 0.7 }} />
                   )}
-                </Box>
-                <Collapsible collapsedHeight={260}>
-                  {comment.bodyHtml ? (
-                    <RichContent html={comment.bodyHtml} sx={{ fontSize: 14, color: comment.isMigrated ? 'text.secondary' : 'text.primary' }} />
-                  ) : (
-                    <Typography
-                      variant="body2"
-                      sx={{ whiteSpace: 'pre-wrap', color: comment.isMigrated ? 'text.secondary' : 'text.primary' }}
-                    >
-                      <Linkify text={comment.body} />
-                    </Typography>
+                  {!comment.isMigrated && editingId !== comment._id && (
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => startEdit(comment)} sx={{ ml: 'auto', color: 'text.secondary' }}>
+                        <EditIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Tooltip>
                   )}
-                </Collapsible>
+                </Box>
+                {editingId === comment._id ? (
+                  <Box>
+                    <RichEditor key={`edit-${comment._id}`} value={editHtml} onChange={setEditHtml} minHeight={70} />
+                    <Box sx={{ display: 'flex', gap: 1, mt: 0.75 }}>
+                      <Button size="small" variant="contained" onClick={() => handleSaveEdit(comment)}>Save</Button>
+                      <Button size="small" onClick={() => setEditingId(null)}>Cancel</Button>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Collapsible collapsedHeight={260}>
+                    {comment.bodyHtml ? (
+                      <RichContent html={comment.bodyHtml} sx={{ fontSize: 14, color: comment.isMigrated ? 'text.secondary' : 'text.primary' }} />
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{ whiteSpace: 'pre-wrap', color: comment.isMigrated ? 'text.secondary' : 'text.primary' }}
+                      >
+                        <Linkify text={comment.body} />
+                      </Typography>
+                    )}
+                  </Collapsible>
+                )}
               </Box>
             </Box>
             <Divider sx={{ mt: 2 }} />

@@ -11,3 +11,5 @@ export const moveCardBoard = (id, data) => api.put(`/cards/${id}/move-board`, da
 export const setCardFields = (id, data) => api.put(`/cards/${id}/fields`, data).then(r => r.data);
 export const deleteCard = (id) => api.delete(`/cards/${id}`).then(r => r.data);
 export const reorderCards = (boardId, cardIds) => api.put(`/boards/${boardId}/cards/reorder`, { cardIds });
+export const addCardAttachment = (id, data) => api.post(`/cards/${id}/attachments`, data).then(r => r.data);
+export const removeCardAttachment = (id, url) => api.delete(`/cards/${id}/attachments`, { data: { url } }).then(r => r.data);

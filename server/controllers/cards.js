@@ -2,6 +2,37 @@
 
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
+const { deleteByUrl } = require('../lib/s3');
+
+async function addAttachment(req, res) {
+  const db = await getDb();
+  const cardId = new ObjectId(req.params.id);
+  const { name, url, isImage } = req.body;
+  if (!url) return res.status(400).json({ error: { message: 'url is required', code: 'VALIDATION' } });
+  const att = { name: name || 'file', url, isImage: !!isImage, inline: false, createdAt: new Date() };
+  const result = await db.collection('cards').findOneAndUpdate(
+    { _id: cardId },
+    { $push: { attachments: att }, $set: { updatedAt: new Date() } },
+    { returnDocument: 'after' }
+  );
+  if (!result) return res.status(404).json({ error: { message: 'Card not found', code: 'NOT_FOUND' } });
+  res.json(result);
+}
+
+async function removeAttachment(req, res) {
+  const db = await getDb();
+  const cardId = new ObjectId(req.params.id);
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: { message: 'url is required', code: 'VALIDATION' } });
+  const result = await db.collection('cards').findOneAndUpdate(
+    { _id: cardId },
+    { $pull: { attachments: { url } }, $set: { updatedAt: new Date() } },
+    { returnDocument: 'after' }
+  );
+  if (!result) return res.status(404).json({ error: { message: 'Card not found', code: 'NOT_FOUND' } });
+  try { await deleteByUrl(url); } catch { /* leave the orphan; not fatal */ }
+  res.json(result);
+}
 
 async function listCards(req, res) {
   const db = await getDb();
@@ -217,4 +248,4 @@ async function setFieldValues(req, res) {
   res.json(result);
 }
 
-module.exports = { listCards, getCard, createCard, updateCard, deleteCard, moveCard, moveCardToBoard, reorderCards, setFieldValues };
+module.exports = { listCards, getCard, createCard, updateCard, deleteCard, moveCard, moveCardToBoard, reorderCards, setFieldValues, addAttachment, removeAttachment };

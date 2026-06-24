@@ -151,8 +151,9 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
            GET /cards/:id (card+comments+subtasks) · PUT /cards/:id · DELETE(admin)
            PUT /cards/:id/move {columnId,position} · PUT /cards/:id/move-board {boardId,columnId}
            PUT /cards/:id/fields { fieldId: value, ... }
+           POST /cards/:id/attachments {name,url,isImage} · DELETE /cards/:id/attachments {url} (also deletes from S3)
 Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · PUT /subtasks/:id · DELETE /subtasks/:id
-Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body} · DELETE(admin) /comments/:id
+Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body, bodyHtml} · DELETE(admin) /comments/:id
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
 Templates  GET/POST /boards/:id/templates · PUT /boards/:id/templates/reorder
            PUT /templates/:id · DELETE /templates/:id · POST /templates/:id/apply {columnId?}
@@ -310,8 +311,8 @@ honor `DNS_SERVERS`. The export JSON is gitignored.
 - Seeds cards (preserve createdAt), subtasks, comments (preserve timestamps,
   `migratedAuthorName`, `bodyHtml`), tags, attachments, `isCompleted/completedAt`,
   `descriptionHtml`.
-- ⚠️ Currently `$set`s `attachments` (overwrites). When native uploads exist, the
-  seeder MUST merge (keep attachments without `asanaGid`).
+- Merges attachments on re-seed: keeps user-uploaded (native, under
+  `buyer-board/uploads/`) attachments and replaces only the Asana-migrated ones.
 
 ---
 
@@ -359,9 +360,10 @@ All route handlers try/catch → central error middleware; error shape
   user theme. Until then everyone is the admin `DEV_USER`.
 - **Owner-only edit permissions** (cards/comments editable only by owner) — waits on real auth.
 - **User profile photos** — come with SSO; show photo, fall back to colored initials.
-- **Rich text Phase 2:** edit comments (UI; API exists), edit image-descriptions
-  (currently read-only), add/remove attachments in the Attachments section (needs
-  `s3:DeleteObject` + seeder merge). Optional: slash menu, @mentions.
+- **Rich text editing is BUILT** (TipTap): rich comment composer + comment editing,
+  rich description editing (images preserved), and add/remove attachments in the
+  Attachments section. Remove deletes from S3, so the IAM policy needs
+  **`s3:DeleteObject`**. Optional, not built: slash ("/") menu, @mentions.
 - **Import Asana task templates** (templates are not exported/seeded yet).
 - **Private S3 bucket** via presigned/CloudFront (currently public).
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during

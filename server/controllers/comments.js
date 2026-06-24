@@ -33,8 +33,8 @@ async function createComment(req, res) {
 async function updateComment(req, res) {
   const db = await getDb();
   const commentId = new ObjectId(req.params.id);
-  const { body } = req.body;
-  if (!body || !body.trim()) {
+  const { body, bodyHtml } = req.body;
+  if ((!body || !body.trim()) && (!bodyHtml || !bodyHtml.trim())) {
     return res.status(400).json({ error: { message: 'body is required', code: 'VALIDATION' } });
   }
 
@@ -47,9 +47,13 @@ async function updateComment(req, res) {
     return res.status(403).json({ error: { message: 'Not allowed to edit this comment', code: 'FORBIDDEN' } });
   }
 
+  const $set = { editedAt: new Date() };
+  if (body !== undefined) $set.body = (body || '').trim();
+  if (bodyHtml !== undefined) $set.bodyHtml = bodyHtml || null;
+
   const result = await db.collection('comments').findOneAndUpdate(
     { _id: commentId },
-    { $set: { body: body.trim() } },
+    { $set },
     { returnDocument: 'after' }
   );
   res.json(result);
