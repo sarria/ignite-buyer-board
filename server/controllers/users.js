@@ -23,11 +23,12 @@ async function createUser(req, res) {
 async function updateUser(req, res) {
   const db = await getDb();
   const userId = new ObjectId(req.params.id);
-  const { name, role, defaultBoardId } = req.body;
+  const { name, role, defaultBoardId, deactivated } = req.body;
   const $set = {};
   if (name !== undefined) $set.name = name;
   if (role !== undefined) $set.role = role;
   if (defaultBoardId !== undefined) $set.defaultBoardId = new ObjectId(defaultBoardId);
+  if (deactivated !== undefined) $set.deactivated = !!deactivated;
 
   const result = await db.collection('users').findOneAndUpdate(
     { _id: userId },
