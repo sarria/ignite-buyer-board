@@ -303,16 +303,13 @@ export default function TemplatesTab({ boardId, templates, columns, fields, user
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          Templates pre-fill cards with default values. Apply when creating a new card or from within an existing card.
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', mb: 2 }}>
         <Button
           size="small"
+          variant="contained"
           startIcon={<AddIcon />}
           onClick={() => setAdding(true)}
-          color="primary"
-          sx={{ flexShrink: 0, ml: 2 }}
+          sx={{ flexShrink: 0 }}
         >
           New template
         </Button>

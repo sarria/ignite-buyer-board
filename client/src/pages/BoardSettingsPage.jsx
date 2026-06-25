@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Tabs, Tab, CircularProgress, IconButton, Tooltip,
+  Box, Typography, Tabs, Tab, CircularProgress, IconButton, Tooltip, Paper,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { getBoard } from '../api/boards';
 import { getTemplates } from '../api/templates';
 import { getUsers } from '../api/users';
@@ -34,24 +35,49 @@ export default function BoardSettingsPage() {
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
+  const tabHint = ['Drag-free list of board sections. Click a row to rename or recolor it.',
+    'Custom fields shown on cards in this board (text, number, date, url, or enum).',
+    'Reusable card templates: prefill column, assignee, fields, and subtasks.'][tab];
+
   return (
-    <Box sx={{ maxWidth: 720, mx: 'auto', p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-        <Tooltip title="Back to board">
-          <IconButton onClick={() => navigate(`/boards/${id}`)}><ArrowBackIcon /></IconButton>
-        </Tooltip>
-        <Typography variant="h6" fontWeight={700}>{board?.name} — Settings</Typography>
+    <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: 'background.default' }}>
+      <Box sx={{ maxWidth: 760, mx: 'auto', px: 3, py: 4 }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 3 }}>
+          <Tooltip title="Back to board">
+            <IconButton onClick={() => navigate(`/boards/${id}`)} size="small" sx={{ border: 1, borderColor: 'divider' }}>
+              <ArrowBackIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <SettingsOutlinedIcon sx={{ color: 'text.secondary' }} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h5" noWrap>{board?.name}</Typography>
+            <Typography variant="caption" color="text.secondary">Board settings</Typography>
+          </Box>
+        </Box>
+
+        {/* Panel: tabs + content */}
+        <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{ px: 1.5, borderBottom: '1px solid', borderColor: 'divider', minHeight: 44, '& .MuiTab-root': { minHeight: 44, textTransform: 'none', fontWeight: 600 } }}
+          >
+            <Tab label="Columns" />
+            <Tab label="Fields" />
+            <Tab label="Templates" />
+          </Tabs>
+
+          <Box sx={{ p: 2.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+              {tabHint}
+            </Typography>
+            {tab === 0 && <ColumnsTab boardId={id} columns={columns} onChange={setColumns} />}
+            {tab === 1 && <FieldsTab boardId={id} fields={fields} onChange={setFields} />}
+            {tab === 2 && <TemplatesTab boardId={id} templates={templates} columns={columns} fields={fields} users={users} onChange={setTemplates} />}
+          </Box>
+        </Paper>
       </Box>
-
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Tab label="Columns" />
-        <Tab label="Fields" />
-        <Tab label="Templates" />
-      </Tabs>
-
-      {tab === 0 && <ColumnsTab boardId={id} columns={columns} onChange={setColumns} />}
-      {tab === 1 && <FieldsTab boardId={id} fields={fields} onChange={setFields} />}
-      {tab === 2 && <TemplatesTab boardId={id} templates={templates} columns={columns} fields={fields} users={users} onChange={setTemplates} />}
     </Box>
   );
 }

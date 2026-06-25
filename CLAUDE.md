@@ -229,7 +229,13 @@ PORT=3001  CLIENT_URL=http://localhost:5173
   from cache (no skeleton) then revalidates silently in the background. The cache stays
   current because every mutation flows through BoardPage's setState, which writes a
   snapshot. Lives for the browser tab (cleared on full reload).
-- `/boards/:id/settings` → Columns / Fields / Templates tabs
+  The board **title in the top bar is click-to-edit** (inline rename → `PUT /boards/:id`;
+  updates board state + cache, and dispatches a `board:renamed` window event the Sidebar
+  listens for so its list updates without a refetch).
+- `/boards/:id/settings` → Columns / Fields / Templates tabs, rendered as a centered
+  **outlined panel** (header: back button + board name + "Board settings", per-tab hint
+  line). Columns/Fields rows are card-like (hover bg, color dot / type chip, actions
+  revealed on hover) with a divider-separated add composer at the bottom.
 - `/admin/users` → user management
 
 ### Layout (app shell — important)
