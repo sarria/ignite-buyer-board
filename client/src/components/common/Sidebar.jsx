@@ -41,6 +41,16 @@ export default function Sidebar() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Reflect a board rename (dispatched from BoardPage) without a full refetch.
+  useEffect(() => {
+    const onRenamed = (e) => {
+      const { id: rid, name } = e.detail || {};
+      setBoards(prev => prev.map(b => (b._id?.toString() === rid?.toString() ? { ...b, name } : b)));
+    };
+    window.addEventListener('board:renamed', onRenamed);
+    return () => window.removeEventListener('board:renamed', onRenamed);
+  }, []);
+
   // Drag-to-resize: the sidebar's left edge is the viewport left (x=0), so the
   // pointer's clientX is the target width. Clamp to [MIN, MAX] and persist.
   useEffect(() => {

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
   Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider, Skeleton,
-  Checkbox, ListItemText,
+  Checkbox, ListItemText, InputBase,
 } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -19,7 +19,7 @@ import BoardColumn from '../components/Board/BoardColumn';
 import BoardCard from '../components/Board/BoardCard';
 import ArchivedGrid from '../components/Board/ArchivedGrid';
 import CardDrawer from '../components/Card/CardDrawer';
-import { getBoard } from '../api/boards';
+import { getBoard, updateBoard } from '../api/boards';
 import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
 import { reorderColumns } from '../api/columns';
 import { getTemplates, applyTemplate } from '../api/templates';
@@ -43,6 +43,48 @@ function SkeletonColumn() {
         ))}
       </Box>
     </Box>
+  );
+}
+
+// Click-to-edit board title in the top bar (borderless until hover, like the drawer).
+function EditableBoardTitle({ name, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(name);
+
+  const titleSx = { fontSize: '1.0625rem', fontWeight: 600, whiteSpace: 'nowrap' };
+
+  const save = async () => {
+    const trimmed = val.trim();
+    if (trimmed && trimmed !== name) await onSave(trimmed);
+    else setVal(name);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <InputBase
+        autoFocus
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={save}
+        onKeyDown={e => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') { setVal(name); setEditing(false); }
+        }}
+        sx={{ ...titleSx, px: 0.75, borderRadius: 1, border: 1, borderColor: 'primary.main', '& input': { p: 0 } }}
+      />
+    );
+  }
+
+  return (
+    <Tooltip title="Rename board" placement="bottom-start">
+      <Typography
+        onClick={() => { setVal(name); setEditing(true); }}
+        sx={{ ...titleSx, px: 0.75, mr: 0.25, borderRadius: 1, cursor: 'text', border: 1, borderColor: 'transparent', '&:hover': { borderColor: 'divider' } }}
+      >
+        {name}
+      </Typography>
+    </Tooltip>
   );
 }
 
@@ -244,6 +286,13 @@ export default function BoardPage() {
     openCard(created._id); // open the new card so the user can keep filling it in
   }, [id, openCard]);
 
+  const handleRenameBoard = useCallback(async (name) => {
+    const updated = await updateBoard(id, { name });
+    setBoard(prev => (prev ? { ...prev, name: updated.name } : prev));
+    // Sidebar loads boards once and persists across routes — notify it to update.
+    window.dispatchEvent(new CustomEvent('board:renamed', { detail: { id, name: updated.name } }));
+  }, [id]);
+
   const handleApplyTemplate = useCallback(async (template, columnId, title) => {
     const created = await applyTemplate(template._id, columnId, title);
     setCards(prev => [...prev, created]);
@@ -338,9 +387,9 @@ export default function BoardPage() {
         display: 'flex', alignItems: 'center', gap: 1.25,
         bgcolor: 'background.paper', flexShrink: 0,
       }}>
-        <Typography sx={{ fontSize: '1.0625rem', fontWeight: 600, whiteSpace: 'nowrap', mr: 0.25 }}>
-          {board ? board.name : <Skeleton variant="text" width={180} />}
-        </Typography>
+        {board
+          ? <EditableBoardTitle name={board.name} onSave={handleRenameBoard} />
+          : <Skeleton variant="text" width={180} sx={{ fontSize: '1.0625rem', mr: 0.25 }} />}
 
         <Divider orientation="vertical" flexItem sx={{ mx: 0.75, my: 0.75 }} />
 
