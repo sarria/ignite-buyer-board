@@ -222,6 +222,13 @@ PORT=3001  CLIENT_URL=http://localhost:5173
   columns while the board loads, skeleton cards while cards load); cards, users, and
   templates load independently so the page never shows a blank full-page spinner —
   important as the dataset grows (Asana import).
+  **Tab-lived board cache** (`utils/boardCache.js`): BoardPage unmounts when you leave
+  for the dashboard/users/settings, so its state would otherwise refetch on return.
+  Loaded data (board, columns, cards, templates, archivedLoaded per board id; users
+  globally) is cached and used SWR-style — on return the board hydrates **instantly**
+  from cache (no skeleton) then revalidates silently in the background. The cache stays
+  current because every mutation flows through BoardPage's setState, which writes a
+  snapshot. Lives for the browser tab (cleared on full reload).
 - `/boards/:id/settings` → Columns / Fields / Templates tabs
 - `/admin/users` → user management
 
@@ -248,6 +255,12 @@ lists scroll, never the page (mirrors Asana).
   sortable (so large archives render fast). Cards show: tag glyphs (colored `Sell`
   icons, name on hover), Health chip, title (strikethrough + ✓ if completed),
   assignee avatar (per-user color), due date (red if overdue), subtask & comment counts.
+- **ArchivedGrid** — the archive view (archive toggle in the top bar) is a flat,
+  responsive **grid/gallery** of `ArchivedCard`s, NOT the column layout. Cards are
+  read-only; each shows a small uppercase **column-name label** (the column it lived
+  in) since the grid isn't grouped, and the drawer shows it too. Honors the
+  search/assignee/health filters; shows complete + incomplete together (no completion
+  filter in archive view).
 - **CardDrawer** — right drawer. Mark complete toggle, Status/Assignee/Due, Tags
   (combobox), custom fields (only those with a value, "+ Add field" to reveal more).
   Field inputs are **borderless until hover** (border on hover, blue on focus — Asana).

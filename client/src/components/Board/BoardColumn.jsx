@@ -9,7 +9,6 @@ import { useDroppable } from '@dnd-kit/core';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import BoardCard from './BoardCard';
-import ArchivedCard from './ArchivedCard';
 
 export default function BoardColumn({
   column, cards = [], fields = [], users = [], templates = [],
@@ -134,18 +133,6 @@ export default function BoardColumn({
           // Standard-card-height placeholders, enough to fill the column height.
           Array.from({ length: Math.ceil(window.innerHeight / 156) }).map((_, i) => (
             <Skeleton key={i} variant="rounded" height={144} sx={{ mb: 1.5, borderRadius: 1.5 }} />
-          ))
-        ) : showArchived ? (
-          // Read-only, non-draggable cards — renders fast even for large archives.
-          cards.map(card => (
-            <ArchivedCard
-              key={card._id}
-              card={card}
-              fields={fields}
-              users={users}
-              onClick={() => onCardClick(card)}
-              selected={selectedCardId?.toString() === card._id?.toString()}
-            />
           ))
         ) : (
           <SortableContext items={cards.map(c => c._id)} strategy={verticalListSortingStrategy}>

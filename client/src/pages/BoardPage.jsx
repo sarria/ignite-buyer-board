@@ -16,6 +16,7 @@ import {
 import { arrayMove, SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import BoardColumn from '../components/Board/BoardColumn';
 import BoardCard from '../components/Board/BoardCard';
+import ArchivedGrid from '../components/Board/ArchivedGrid';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard } from '../api/boards';
 import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
@@ -24,6 +25,10 @@ import { getTemplates, applyTemplate } from '../api/templates';
 import api from '../api/client';
 import { useApp } from '../context/AppContext';
 import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
+import {
+  getBoardSnapshot, setBoardSnapshot, clearBoardSnapshot,
+  getUsersCache, setUsersCache,
+} from '../utils/boardCache';
 
 // Placeholder column shown while the board frame (columns) is still loading.
 function SkeletonColumn() {
@@ -44,12 +49,15 @@ export default function BoardPage() {
   const navigate = useNavigate();
   const { mode, toggleTheme } = useApp();
 
-  const [board, setBoard] = useState(null);
-  const [columns, setColumns] = useState([]);
-  const [cards, setCards] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [cardsLoading, setCardsLoading] = useState(true);
+  // Hydrate synchronously from the cache so returning to a board is instant
+  // (no skeleton flash). These initializers run once on mount.
+  const cachedInit = getBoardSnapshot(id);
+  const [board, setBoard] = useState(cachedInit?.board ?? null);
+  const [columns, setColumns] = useState(cachedInit?.columns ?? []);
+  const [cards, setCards] = useState(cachedInit?.cards ?? []);
+  const [users, setUsers] = useState(getUsersCache() ?? []);
+  const [loading, setLoading] = useState(!cachedInit);
+  const [cardsLoading, setCardsLoading] = useState(!cachedInit);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
@@ -62,23 +70,37 @@ export default function BoardPage() {
   // (?card=<id>) for deep-linking; initialized from and synced to the URL.
   const [drawerCardId, setDrawerCardId] = useState(() => searchParams.get('card'));
   const [didDrag, setDidDrag] = useState(false);
-  const [templates, setTemplates] = useState([]);
+  const [templates, setTemplates] = useState(cachedInit?.templates ?? []);
   const [showArchived, setShowArchived] = useState(false);
-  const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [archivedLoaded, setArchivedLoaded] = useState(cachedInit?.archivedLoaded ?? false);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     let cancelled = false;
-    // Reset so switching boards shows the new board's skeleton, not stale data.
-    setLoading(true);
-    setCardsLoading(true);
+    const cached = getBoardSnapshot(id);
+
+    if (cached) {
+      // Instant: show the cached board now, revalidate silently below (no skeleton).
+      setBoard(cached.board);
+      setColumns(cached.columns);
+      setCards(cached.cards);
+      setTemplates(cached.templates);
+      setArchivedLoaded(cached.archivedLoaded);
+      setLoading(false);
+      setCardsLoading(false);
+    } else {
+      // Cold load: reset so we show this board's skeleton, not stale data.
+      setLoading(true);
+      setCardsLoading(true);
+      setBoard(null);
+      setColumns([]);
+      setCards([]);
+      setTemplates([]);
+      setArchivedLoaded(false);
+    }
     setError(null);
-    setBoard(null);
-    setColumns([]);
-    setCards([]);
     setShowArchived(false);
-    setArchivedLoaded(false);
 
     // Board (columns + fields) drives the visible frame — load it first so the
     // top bar and columns render immediately, then the rest fills in.
@@ -90,24 +112,40 @@ export default function BoardPage() {
         setColumns(boardData.columns || []);
       })
       .catch(e => {
-        // Board is gone or unreachable — drop the stale pointer so '/' won't loop back here.
         if (cancelled) return;
-        clearLastBoardId();
-        setError(e.message);
+        // Board is gone or unreachable — drop the stale pointer/cache so '/' won't loop back here.
+        clearBoardSnapshot(id);
+        if (!cached) { clearLastBoardId(); setError(e.message); }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
 
-    // Cards fill in as they arrive (skeleton cards show meanwhile).
+    // Cards fill in as they arrive (skeleton cards show meanwhile on a cold load).
     getCards(id, { archived: 'false' })
-      .then(cardsData => { if (!cancelled) setCards(cardsData); })
+      .then(cardsData => {
+        if (cancelled) return;
+        // Preserve any already-loaded archived cards; refresh the active ones.
+        setCards(prev => {
+          const activeIds = new Set(cardsData.map(c => c._id.toString()));
+          const archived = prev.filter(c => c.isArchived && !activeIds.has(c._id.toString()));
+          return [...cardsData, ...archived];
+        });
+      })
       .finally(() => { if (!cancelled) setCardsLoading(false); });
 
     // Users + templates are non-blocking (filters / template menus).
-    api.get('/users').then(r => { if (!cancelled) setUsers(r.data); }).catch(() => {});
+    api.get('/users').then(r => { if (!cancelled) { setUsers(r.data); setUsersCache(r.data); } }).catch(() => {});
     getTemplates(id).then(t => { if (!cancelled) setTemplates(t); }).catch(() => {});
 
     return () => { cancelled = true; };
   }, [id]);
+
+  // Keep the cache in sync with the live board state so the next visit is instant.
+  // Guard on board._id === id: during a board→board switch the id dep changes a
+  // render before the state does, and we must not write the old board under the new key.
+  useEffect(() => {
+    if (loading || !board || board._id?.toString() !== id?.toString()) return;
+    setBoardSnapshot(id, { board, columns, cards, templates, archivedLoaded });
+  }, [id, board, columns, cards, templates, archivedLoaded, loading]);
 
   // Card drawer open state lives in the URL (?card=<id>) so cards are deep-linkable
   // (copy link / refresh / back button all work).
@@ -237,6 +275,27 @@ export default function BoardPage() {
     });
     return map;
   }, [cards, columns, filterAssignee, filterHealth, completedFilter, search, healthField, showArchived]);
+
+  // Archive view is a flat grid (not grouped by column). Same filters as the board
+  // minus the completion filter — the archive shows complete + incomplete together.
+  const archivedCards = useMemo(() => {
+    if (!showArchived) return [];
+    return cards.filter(card => {
+      if (!card.isArchived) return false;
+      if (filterAssignee && card.assigneeId?.toString() !== filterAssignee) return false;
+      if (filterHealth && healthField) {
+        const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
+        if (fv?.valueEnum !== filterHealth) return false;
+      }
+      if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+  }, [showArchived, cards, filterAssignee, filterHealth, search, healthField]);
+
+  const columnNameById = useMemo(
+    () => Object.fromEntries(columns.map(c => [c._id?.toString(), c.name])),
+    [columns]
+  );
 
   if (error) return <Box sx={{ p: 4 }}><Typography color="error">{error}</Typography></Box>;
 
@@ -370,54 +429,65 @@ export default function BoardPage() {
       </Box>
 
       {/* Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={columns.map(c => c._id)} strategy={horizontalListSortingStrategy}>
-          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'stretch', p: 2 }}>
-            {loading
-              ? Array.from({ length: 4 }).map((_, i) => <SkeletonColumn key={i} />)
-              : columns.map(col => (
-                <BoardColumn
-                  key={col._id}
-                  column={col}
-                  cards={cardsByColumn[col._id] || []}
-                  fields={fields}
-                  users={users}
-                  selectedCardId={drawerCardId}
-                  onCardClick={card => { if (!didDrag) openCard(card._id); }}
-                  onAddCard={handleAddCard}
-                  onApplyTemplate={handleApplyTemplate}
-                  templates={templates}
-                  showArchived={showArchived}
-                  loadingCards={cardsLoading}
-                />
-              ))}
-          </Box>
-        </SortableContext>
+      {showArchived ? (
+        <ArchivedGrid
+          cards={archivedCards}
+          fields={fields}
+          users={users}
+          columnNameById={columnNameById}
+          selectedCardId={drawerCardId}
+          onCardClick={card => openCard(card._id)}
+        />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={columns.map(c => c._id)} strategy={horizontalListSortingStrategy}>
+            <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'stretch', p: 2 }}>
+              {loading
+                ? Array.from({ length: 4 }).map((_, i) => <SkeletonColumn key={i} />)
+                : columns.map(col => (
+                  <BoardColumn
+                    key={col._id}
+                    column={col}
+                    cards={cardsByColumn[col._id] || []}
+                    fields={fields}
+                    users={users}
+                    selectedCardId={drawerCardId}
+                    onCardClick={card => { if (!didDrag) openCard(card._id); }}
+                    onAddCard={handleAddCard}
+                    onApplyTemplate={handleApplyTemplate}
+                    templates={templates}
+                    showArchived={showArchived}
+                    loadingCards={cardsLoading}
+                  />
+                ))}
+            </Box>
+          </SortableContext>
 
-        <DragOverlay>
-          {activeCard && (
-            <BoardCard card={activeCard} fields={fields} users={users} onClick={() => {}} />
-          )}
-          {activeColumn && (
-            <BoardColumn
-              column={activeColumn}
-              cards={cardsByColumn[activeColumn._id] || []}
-              fields={fields}
-              users={users}
-              onCardClick={() => {}}
-              onAddCard={() => {}}
-              onApplyTemplate={() => {}}
-              templates={[]}
-              isDragOverlay
-            />
-          )}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay>
+            {activeCard && (
+              <BoardCard card={activeCard} fields={fields} users={users} onClick={() => {}} />
+            )}
+            {activeColumn && (
+              <BoardColumn
+                column={activeColumn}
+                cards={cardsByColumn[activeColumn._id] || []}
+                fields={fields}
+                users={users}
+                onCardClick={() => {}}
+                onAddCard={() => {}}
+                onApplyTemplate={() => {}}
+                templates={[]}
+                isDragOverlay
+              />
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       <CardDrawer
         cardId={drawerCardId}
