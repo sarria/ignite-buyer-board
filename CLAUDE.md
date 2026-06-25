@@ -342,6 +342,11 @@ Familiar to Asana users (board reference), but with our color rules.
 - Board toolbar (BoardPage top bar): slim row — board title (`h5`), a divider, then
   understated **filled "pill" controls** (search + filter selects) whose border appears
   only on hover/focus; filter selects render a muted `Label: Value` (no floating labels).
+  Filters: **Assignee**, **Health**, **Tags** (multi-select, match-any/OR; menu items
+  show the tag's `dot` color swatch + checkbox; "Clear tags" entry; shown only if the
+  board has tags), and **Tasks** (completion). Search matches **title only** —
+  tag/assignee/health are filters, not search. Filters apply to both the board and the
+  archive grid (archive ignores the completion filter).
 
 Do NOT build: top nav tabs (Timeline/Calendar/etc.), Portfolios/Goals/Inbox,
 My Tasks, premium prompts, mobile-responsive layout.

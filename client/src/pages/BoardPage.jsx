@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
   Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider, Skeleton,
+  Checkbox, ListItemText,
 } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -25,6 +26,7 @@ import { getTemplates, applyTemplate } from '../api/templates';
 import api from '../api/client';
 import { useApp } from '../context/AppContext';
 import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
+import { tagColor } from '../utils/tagColor';
 import {
   getBoardSnapshot, setBoardSnapshot, clearBoardSnapshot,
   getUsersCache, setUsersCache,
@@ -62,6 +64,7 @@ export default function BoardPage() {
   const [search, setSearch] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterHealth, setFilterHealth] = useState('');
+  const [filterTags, setFilterTags] = useState([]); // match-any (OR)
   const [completedFilter, setCompletedFilter] = useState('incomplete'); // incomplete | all | completed
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
@@ -251,6 +254,12 @@ export default function BoardPage() {
   const healthField = fields.find(f => f.name === 'Health' && f.type === 'enum');
   const healthOptions = healthField?.options || [];
 
+  // All tags used on this board (for the toolbar Tag filter + drawer combobox).
+  const allTags = useMemo(
+    () => [...new Set(cards.flatMap(c => c.tags || []))].sort((a, b) => a.localeCompare(b)),
+    [cards]
+  );
+
   const cardsByColumn = useMemo(() => {
     const filtered = cards.filter(card => {
       if (showArchived ? !card.isArchived : card.isArchived) return false;
@@ -264,6 +273,7 @@ export default function BoardPage() {
         const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
         if (fv?.valueEnum !== filterHealth) return false;
       }
+      if (filterTags.length && !filterTags.some(t => card.tags?.includes(t))) return false;
       if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
@@ -274,7 +284,7 @@ export default function BoardPage() {
       if (map[key]) map[key].push(card);
     });
     return map;
-  }, [cards, columns, filterAssignee, filterHealth, completedFilter, search, healthField, showArchived]);
+  }, [cards, columns, filterAssignee, filterHealth, filterTags, completedFilter, search, healthField, showArchived]);
 
   // Archive view is a flat grid (not grouped by column). Same filters as the board
   // minus the completion filter — the archive shows complete + incomplete together.
@@ -287,10 +297,11 @@ export default function BoardPage() {
         const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
         if (fv?.valueEnum !== filterHealth) return false;
       }
+      if (filterTags.length && !filterTags.some(t => card.tags?.includes(t))) return false;
       if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [showArchived, cards, filterAssignee, filterHealth, search, healthField]);
+  }, [showArchived, cards, filterAssignee, filterHealth, filterTags, search, healthField]);
 
   const columnNameById = useMemo(
     () => Object.fromEntries(columns.map(c => [c._id?.toString(), c.name])),
@@ -365,6 +376,35 @@ export default function BoardPage() {
             >
               <MenuItem value="">All health</MenuItem>
               {healthOptions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+            </Select>
+          </FormControl>
+        )}
+        {allTags.length > 0 && (
+          <FormControl size="small">
+            <Select
+              multiple
+              value={filterTags}
+              displayEmpty
+              onChange={e => {
+                const val = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                setFilterTags(val.includes('__clear__') ? [] : val);
+              }}
+              renderValue={v => filterLabel('Tags', v.length ? (v.length === 1 ? v[0] : `${v.length}`) : null)}
+              MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
+              sx={{ ...controlSx, minWidth: 100, maxWidth: 220 }}
+            >
+              {filterTags.length > 0 && (
+                <MenuItem value="__clear__" sx={{ color: 'text.secondary' }} dense>
+                  Clear tags
+                </MenuItem>
+              )}
+              {allTags.map(tag => (
+                <MenuItem key={tag} value={tag} dense>
+                  <Checkbox size="small" checked={filterTags.includes(tag)} sx={{ p: 0.5, mr: 0.5 }} />
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: tagColor(tag).dot, flexShrink: 0, mr: 1 }} />
+                  <ListItemText primaryTypographyProps={{ variant: 'body2', noWrap: true }} primary={tag} />
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         )}
@@ -498,7 +538,7 @@ export default function BoardPage() {
         fields={fields}
         users={users}
         templates={templates}
-        allTags={[...new Set(cards.flatMap(c => c.tags || []))].sort()}
+        allTags={allTags}
         onCardUpdate={updated => setCards(prev => prev.map(c => c._id?.toString() === updated._id?.toString() ? { ...c, ...updated } : c))}
         onCardDelete={(cardId) => {
           setCards(prev => prev.filter(c => c._id?.toString() !== cardId?.toString()));
