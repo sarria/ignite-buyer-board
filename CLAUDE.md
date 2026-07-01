@@ -235,7 +235,9 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 - `/boards/:id/settings` → Columns / Fields / Templates tabs, rendered as a centered
   **outlined panel** (header: back button + board name + "Board settings", per-tab hint
   line). Columns/Fields rows are card-like (hover bg, color dot / type chip, actions
-  revealed on hover) with a divider-separated add composer at the bottom.
+  revealed on hover) with a divider-separated add composer at the bottom. All three tabs
+  are **drag-to-reorder** (dnd-kit, grip handle) → `columns/reorder`, `fields/reorder`,
+  `templates/reorder` (optimistic).
 - `/admin/users` → user management
 
 ### Layout (app shell — important)
