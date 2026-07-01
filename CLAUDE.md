@@ -101,7 +101,7 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
 { _id, name, email /*unique*/, role /*'admin'|'member'*/, microsoftId, defaultBoardId, createdAt }
 
 // boards
-{ _id, name, description, createdBy, createdAt, asanaProjectGid }
+{ _id, name, description, createdBy, createdAt, asanaProjectGid, isArchived }
 
 // columns  (per board)
 { _id, boardId, name, position, color /*hex*/, asanaGid, createdAt }
@@ -155,7 +155,10 @@ comments {cardId, createdAt}
 All under `/api`, behind auth middleware (stub). `requireAdmin` where noted.
 
 ```
-Boards     GET /boards · GET /boards/:id (board+columns+fields) · POST(admin) · PUT(admin) · DELETE(admin)
+Boards     GET /boards (each w/ columnCount + cardCount) · GET /boards/:id (board+columns+fields)
+           POST(admin) (seeds default To Do/Doing/Done columns) · PUT(admin) {name,description,isArchived}
+           DELETE(admin) — cascades ALL children (cards, subtasks, comments, columns, fields, templates
+             + best-effort S3 attachment cleanup); 409 if the board has cards and isn't archived yet
 Columns    GET/POST /boards/:id/columns · PUT /boards/:id/columns/reorder · PUT /columns/:id · DELETE /columns/:id
 Fields     GET/POST /boards/:id/fields · PUT /boards/:id/fields/reorder · PUT /fields/:id (name,type,options) · DELETE /fields/:id
 Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards/:id/cards
@@ -226,7 +229,13 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 
 ### Pages / routes
 - `/` → redirect to last-viewed board (localStorage) or `/dashboard`
-- `/dashboard` → home: greeting + Projects (boards) + People (users) widgets
+- `/dashboard` → home: greeting + Projects (boards) + People (users) widgets. **Board
+  management lives here**: "New board" (dialog → seeds default columns → opens it), and a
+  per-board ⋯ menu (Rename / Archive / Delete). Archived boards drop into a collapsible
+  "Archived" section (dimmed, Unarchive/Delete) and are hidden from the sidebar. Delete is
+  offered only when a board is deletable (empty OR archived); otherwise the menu item is
+  disabled with a hint to archive first. Board changes fire a `boards:changed` window event
+  the Sidebar listens for.
 - `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer).
   **Frame-first loading**: board/columns load first and render immediately (skeleton
   columns while the board loads, skeleton cards while cards load); cards, users, and
@@ -431,7 +440,11 @@ honor `DNS_SERVERS`. The export JSON is gitignored.
    admin can delete. Migrated comment timestamps are sacred.
 5. Columns/fields/templates are **per board**; column names are not standardized.
 6. All users see all boards (no per-board access control).
-7. Keep it simple — no feature without clear buyer value.
+7. **Boards mirror the card rule (Asana Archive + Delete, no trash yet):** a board is
+   **archived** (reversible, hides it from sidebar/dashboard) to put it away, and
+   **deleted** (irreversible, cascades all children) only when it's **empty OR already
+   archived** — a non-empty active board must be archived first. Admin-only.
+8. Keep it simple — no feature without clear buyer value.
 
 ---
 

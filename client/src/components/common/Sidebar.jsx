@@ -35,21 +35,28 @@ export default function Sidebar() {
   });
   const [dragging, setDragging] = useState(false);
 
-  useEffect(() => {
-    getBoards()
-      .then(data => setBoards(data))
-      .finally(() => setLoading(false));
-  }, []);
+  const loadBoards = () => getBoards().then(data => setBoards(data)).finally(() => setLoading(false));
 
-  // Reflect a board rename (dispatched from BoardPage) without a full refetch.
+  useEffect(() => { loadBoards(); }, []);
+
+  // Reflect a board rename (dispatched from BoardPage) without a full refetch;
+  // refetch on any other board change (create/archive/unarchive/delete).
   useEffect(() => {
     const onRenamed = (e) => {
       const { id: rid, name } = e.detail || {};
       setBoards(prev => prev.map(b => (b._id?.toString() === rid?.toString() ? { ...b, name } : b)));
     };
+    const onChanged = () => loadBoards();
     window.addEventListener('board:renamed', onRenamed);
-    return () => window.removeEventListener('board:renamed', onRenamed);
+    window.addEventListener('boards:changed', onChanged);
+    return () => {
+      window.removeEventListener('board:renamed', onRenamed);
+      window.removeEventListener('boards:changed', onChanged);
+    };
   }, []);
+
+  // Archived boards are hidden from the sidebar (managed on the dashboard).
+  const visibleBoards = boards.filter(b => !b.isArchived);
 
   // Drag-to-resize: the sidebar's left edge is the viewport left (x=0), so the
   // pointer's clientX is the target width. Clamp to [MIN, MAX] and persist.
@@ -178,7 +185,7 @@ export default function Sidebar() {
           </Box>
         ) : (
           <Box sx={{ px: 1, pt: collapsed ? 1 : 0, pb: 1 }}>
-            {boards.map(board => {
+            {visibleBoards.map(board => {
               const isActive = activeBoardId === board._id?.toString();
               return (
                 <Tooltip key={board._id} title={board.name} placement="right" disableHoverListener={!collapsed && board.name.length < 24}>
