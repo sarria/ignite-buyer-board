@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { AppProvider } from './context/AppContext';
+import AccessGate from './components/common/AccessGate';
 import Sidebar from './components/common/Sidebar';
 import BoardListPage from './pages/BoardListPage';
 import BoardPage from './pages/BoardPage';
@@ -28,6 +29,8 @@ function SidebarLayout() {
 export default function App() {
   return (
     <AppProvider>
+      {/* TEMPORARY access gate — remove when MSAL SSO lands (see AccessGate). */}
+      <AccessGate>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
@@ -40,6 +43,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </AccessGate>
     </AppProvider>
   );
 }

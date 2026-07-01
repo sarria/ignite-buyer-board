@@ -14,6 +14,11 @@ app.use(express.json());
 // Auth applied globally; swap stub for real MSAL middleware here when ready
 app.use('/api', requireAuth);
 
+// TEMPORARY: lets the frontend access-gate detect whether a password is required
+// and whether the one it holds is valid. Passes requireAuth above → 200 only when
+// the password is correct (or the gate is disabled). Remove with the gate.
+app.get('/api/auth/check', (req, res) => res.json({ ok: true }));
+
 // Routes
 app.use('/api/boards', require('./routes/boards'));
 app.use('/api/columns', require('./routes/columns'));

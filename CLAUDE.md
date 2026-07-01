@@ -183,7 +183,17 @@ isArchived, isCompleted (also stamps completedAt), tags.
 `server/middleware/auth.js` attaches a hardcoded `DEV_USER` (admin) to `req.user` on
 every request — there is no real login yet. `requireAdmin` checks `req.user.role`.
 Replace this file with MSAL token verification when SSO is built (see Planned).
-The frontend has no login page; it loads straight into the app.
+
+**TEMPORARY shared-password gate (remove when MSAL SSO lands).** So we can demo with
+real, sensitive imported data before SSO exists, `requireAuth` enforces a single shared
+password when the `ACCESS_PASSWORD` env var is set: every `/api` request must send it as
+`x-access-password` (or `Authorization: Bearer <pw>`), else `401`. If `ACCESS_PASSWORD`
+is unset (local dev), the gate is disabled and the app opens freely. Everyone still
+shares `DEV_USER`. Frontend: `AccessGate` (wraps the app in `App.jsx`) hits
+`GET /api/auth/check` — 200 opens the app, 401 shows a lock screen; the password is
+stored in localStorage and sent by the axios request interceptor (`api/client.js`). Set
+`ACCESS_PASSWORD` in Vercel for the preview. All the temporary pieces are marked
+`TODO(auth)` / "TEMPORARY".
 
 ---
 
