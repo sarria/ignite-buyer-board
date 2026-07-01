@@ -36,4 +36,20 @@ async function deleteByUrl(url) {
   return true;
 }
 
-module.exports = { s3Enabled, presignUpload, deleteByUrl, publicUrl };
+// Find every one of OUR S3 URLs inside a blob of text/HTML (e.g. inline <img src>
+// in a comment/description). Used so deleting content also removes its files.
+function s3UrlsInHtml(html) {
+  if (!html) return [];
+  const base = `https://${BUCKET}.s3.${REGION}.amazonaws.com/`;
+  const matches = String(html).match(/https?:\/\/[^\s"'<>()]+/g) || [];
+  return matches.filter(u => u.startsWith(base));
+}
+
+// Best-effort bulk delete: dedupes, never throws (S3 cleanup must not block a DB
+// delete — a leaked object is far better than a failed/partial delete).
+async function deleteUrls(urls) {
+  const unique = [...new Set((urls || []).filter(Boolean))];
+  await Promise.all(unique.map(u => deleteByUrl(u).catch(() => {})));
+}
+
+module.exports = { s3Enabled, presignUpload, deleteByUrl, s3UrlsInHtml, deleteUrls, publicUrl };

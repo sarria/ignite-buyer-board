@@ -3,12 +3,13 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
   Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider, Skeleton,
-  Checkbox, ListItemText, InputBase,
+  Checkbox, ListItemText, InputBase, Button,
 } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ArchiveIcon from '@mui/icons-material/Archive';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 import SearchIcon from '@mui/icons-material/Search';
 import {
   DndContext, MouseSensor, TouchSensor, useSensor, useSensors,
@@ -293,6 +294,12 @@ export default function BoardPage() {
     window.dispatchEvent(new CustomEvent('board:renamed', { detail: { id, name: updated.name } }));
   }, [id]);
 
+  const handleUnarchiveBoard = useCallback(async () => {
+    const updated = await updateBoard(id, { isArchived: false });
+    setBoard(prev => (prev ? { ...prev, isArchived: updated.isArchived } : prev));
+    window.dispatchEvent(new CustomEvent('boards:changed'));
+  }, [id]);
+
   const handleApplyTemplate = useCallback(async (template, columnId, title) => {
     const created = await applyTemplate(template._id, columnId, title);
     setCards(prev => [...prev, created]);
@@ -516,6 +523,23 @@ export default function BoardPage() {
           </Tooltip>
         </Box>
       </Box>
+
+      {/* Archived-board banner (this board itself is archived, not the card filter) */}
+      {board?.isArchived && (
+        <Box sx={{
+          flexShrink: 0, px: 2.5, py: 1,
+          bgcolor: '#4573d222', borderBottom: '1px solid', borderColor: 'divider',
+          display: 'flex', alignItems: 'center', gap: 1,
+        }}>
+          <ArchiveIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+          <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 600 }}>
+            This board is archived — hidden from the sidebar and dashboard.
+          </Typography>
+          <Button size="small" startIcon={<UnarchiveIcon />} onClick={handleUnarchiveBoard} sx={{ ml: 'auto' }}>
+            Unarchive
+          </Button>
+        </Box>
+      )}
 
       {/* Board */}
       {showArchived ? (

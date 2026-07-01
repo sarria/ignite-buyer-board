@@ -2,7 +2,7 @@
 
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
-const { deleteByUrl } = require('../lib/s3');
+const { s3UrlsInHtml, deleteUrls } = require('../lib/s3');
 
 // Columns a brand-new board starts with (Asana-like blank board). Editable in Settings.
 const DEFAULT_COLUMNS = ['To Do', 'Doing', 'Done'];
@@ -87,9 +87,15 @@ async function deleteBoard(req, res) {
   }
 
   const cardIds = cards.map(c => c._id);
-  // Best-effort S3 cleanup of card attachments (non-fatal; deleteByUrl ignores non-ours).
-  const urls = cards.flatMap(c => (c.attachments || []).map(a => a.url)).filter(Boolean);
-  await Promise.all(urls.map(u => deleteByUrl(u).catch(() => {})));
+  const comments = await db.collection('comments').find({ cardId: { $in: cardIds } }).toArray();
+
+  // Best-effort S3 cleanup of EVERY file this board owns: standalone attachments +
+  // inline images in card descriptions and comment bodies. Non-fatal.
+  await deleteUrls([
+    ...cards.flatMap(c => (c.attachments || []).map(a => a.url)),
+    ...cards.flatMap(c => s3UrlsInHtml(c.descriptionHtml)),
+    ...comments.flatMap(c => s3UrlsInHtml(c.bodyHtml)),
+  ]);
 
   // Cascade: children first, then the board itself.
   await Promise.all([

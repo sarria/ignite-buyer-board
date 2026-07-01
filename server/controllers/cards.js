@@ -2,7 +2,7 @@
 
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
-const { deleteByUrl } = require('../lib/s3');
+const { deleteByUrl, s3UrlsInHtml, deleteUrls } = require('../lib/s3');
 
 async function addAttachment(req, res) {
   const db = await getDb();
@@ -141,6 +141,12 @@ async function deleteCard(req, res) {
   const isEmpty = !hasDescription && !hasFieldValues && commentCount === 0 && subtaskCount === 0;
 
   if (isEmpty) {
+    // Clean up any S3 files this card owns: standalone attachments + inline images
+    // embedded in its description HTML. (No comments here — isEmpty requires 0.)
+    await deleteUrls([
+      ...(card.attachments || []).map(a => a.url),
+      ...s3UrlsInHtml(card.descriptionHtml),
+    ]);
     await db.collection('cards').deleteOne({ _id: cardId });
     return res.json({ deleted: true });
   }

@@ -2,6 +2,7 @@
 
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
+const { s3UrlsInHtml, deleteUrls } = require('../lib/s3');
 
 async function listComments(req, res) {
   const db = await getDb();
@@ -62,8 +63,11 @@ async function updateComment(req, res) {
 async function deleteComment(req, res) {
   const db = await getDb();
   const commentId = new ObjectId(req.params.id);
-  const result = await db.collection('comments').deleteOne({ _id: commentId });
-  if (result.deletedCount === 0) return res.status(404).json({ error: { message: 'Comment not found', code: 'NOT_FOUND' } });
+  const comment = await db.collection('comments').findOne({ _id: commentId });
+  if (!comment) return res.status(404).json({ error: { message: 'Comment not found', code: 'NOT_FOUND' } });
+  // Remove any inline images the comment owns in S3, then the doc.
+  await deleteUrls(s3UrlsInHtml(comment.bodyHtml));
+  await db.collection('comments').deleteOne({ _id: commentId });
   res.status(204).end();
 }
 

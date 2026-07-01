@@ -384,9 +384,10 @@ My Tasks, premium prompts, mobile-responsive layout.
 
 - Bucket `townsquareignite`, prefix `buyer-board/`, region `us-east-1`. **Public-read
   for now** (planned: move to a private bucket via presigned/CloudFront later).
-- IAM user scoped to `s3:PutObject, s3:GetObject` on `buyer-board/*` (add
-  `s3:DeleteObject` when remove-attachment is built). Bucket CORS must allow browser
-  `PUT`/`GET` from the app origins (localhost:5173, *.vercel.app).
+- IAM user needs `s3:PutObject, s3:GetObject, s3:DeleteObject` on `buyer-board/*`
+  (`DeleteObject` is REQUIRED — used by remove-attachment and every cascade delete;
+  see *Deletion & Cleanup Rules*). Bucket CORS must allow browser `PUT`/`GET` from the
+  app origins (localhost:5173, *.vercel.app).
 - **Two kinds of attachments:** (1) **inline images** embedded in comment/description
   HTML (`<img>` rewritten to S3 URLs); (2) **standalone files** (any type — images,
   Excel, PDF…) shown in the card's Attachments section. The `inline` flag separates them.
@@ -445,6 +446,34 @@ honor `DNS_SERVERS`. The export JSON is gitignored.
    **deleted** (irreversible, cascades all children) only when it's **empty OR already
    archived** — a non-empty active board must be archived first. Admin-only.
 8. Keep it simple — no feature without clear buyer value.
+
+---
+
+## Deletion & Cleanup Rules (no orphans, no leaked files)
+
+**When you delete anything, delete everything it owns — DB children AND S3 files.**
+S3 cleanup is always **best-effort**: never block or fail a DB delete because an S3
+call errored (a leaked object is better than a partial/failed delete). Use
+`deleteUrls()` + `s3UrlsInHtml()` from `server/lib/s3.js`. Inline images live inside
+HTML (`descriptionHtml`, comment `bodyHtml`), NOT the `attachments[]` array — so both
+must be scanned.
+
+Current cascade/cleanup per entity:
+- **Card** (hard-delete only when empty): S3-delete its `attachments[]` + inline images
+  in `descriptionHtml`, then the doc. (Non-empty cards archive instead of delete.)
+- **Comment** (admin delete): S3-delete inline images in `bodyHtml`, then the doc.
+- **Column**: deletable only when it holds no cards (409 otherwise) — nothing else to clean.
+- **Field**: after deleting the field doc, `$pull` its `fieldValues` from every card so no
+  orphaned values remain. (No files.)
+- **Template**: no children/files.
+- **Board** (cascade; deletable only when empty OR archived): delete all `cards`,
+  `subtasks`, `comments`, `columns`, `custom_fields`, `card_templates`; S3-delete every
+  card attachment + inline image (descriptions AND comments); then the board doc.
+
+**Rule for the future — keep this current:** any NEW per-board collection, child entity,
+or file-bearing field MUST be wired into (a) its own delete path and (b) the **board
+cascade** in `deleteBoard`, so deleting a board leaves nothing behind. If content can
+hold inline files, clean them with `s3UrlsInHtml`, not just `attachments[]`.
 
 ---
 

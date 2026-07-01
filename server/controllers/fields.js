@@ -54,6 +54,11 @@ async function deleteField(req, res) {
   const fieldId = new ObjectId(req.params.id);
   const result = await db.collection('custom_fields').deleteOne({ _id: fieldId });
   if (result.deletedCount === 0) return res.status(404).json({ error: { message: 'Field not found', code: 'NOT_FOUND' } });
+  // Remove this field's values from every card so no orphaned fieldValues remain.
+  await db.collection('cards').updateMany(
+    { 'fieldValues.fieldId': fieldId },
+    { $pull: { fieldValues: { fieldId } } }
+  );
   res.status(204).end();
 }
 
