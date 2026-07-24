@@ -6,3 +6,6 @@ dist/
 
 # Asana export data (large, regenerable; only used by the local seeder)
 migration/asana-export-*.json
+
+# External SEM API integration guide (contains a live service token — keep out of git)
+ext-sem-api-guide-asana.md
