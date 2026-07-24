@@ -22,6 +22,7 @@ import { getCard, updateCard, setCardFields, deleteCard, moveCardBoard, addCardA
 import { uploadFile } from '../../api/uploads';
 import { getBoards, getBoard } from '../../api/boards';
 import CardSubtasks from './CardSubtasks';
+import LuminaPanel from './LuminaPanel';
 import CardComments from './CardComments';
 import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
@@ -740,6 +741,16 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                 </Box>
               );
             })()}
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Lumina — attach a line item; data is re-pulled live on every open */}
+            <LuminaPanel
+              key={`lumina-${card._id}`}
+              lumina={card.lumina}
+              readOnly={readOnly}
+              onChange={l => saveField({ lumina: l })}
+            />
 
             <Divider sx={{ my: 2 }} />
 

@@ -15,4 +15,14 @@ const PORT = process.env.PORT || 3001;
 
 connectDb()
   .then(() => app.listen(PORT, () => console.log(`Server running on port ${PORT}`)))
+  .then(() => {
+    // Warm the Lumina advertiser-search cache in the background so the first user
+    // to type doesn't pay the full paged pull. Best-effort: never blocks or fails
+    // startup. (Long-lived server only — serverless has no startup hook.)
+    const lumina = require('./lib/lumina');
+    if (!lumina.configured()) return;
+    Promise.all([lumina.allLineItems(), lumina.allAdvertisers()])
+      .then(([li, adv]) => console.log(`Lumina: cached ${li.length} line items, ${adv.length} advertisers`))
+      .catch(err => console.warn('Lumina warm-up skipped:', err.message));
+  })
   .catch(err => { console.error('Failed to start:', err); process.exit(1); });

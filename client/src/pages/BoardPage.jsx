@@ -24,6 +24,7 @@ import { getBoard, updateBoard } from '../api/boards';
 import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
 import { reorderColumns } from '../api/columns';
 import { getTemplates, applyTemplate } from '../api/templates';
+import { warmLumina } from '../api/lumina';
 import api from '../api/client';
 import { useApp } from '../context/AppContext';
 import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
@@ -121,6 +122,11 @@ export default function BoardPage() {
   const [archivedLoaded, setArchivedLoaded] = useState(cachedInit?.archivedLoaded ?? false);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // Nudge the server to pre-load its Lumina advertiser cache while the board
+  // renders, so the attach-search in a card drawer is instant. Fire-and-forget:
+  // returns right away, never blocks the board, failure is a no-op.
+  useEffect(() => { warmLumina().catch(() => {}); }, []);
 
   useEffect(() => {
     let cancelled = false;

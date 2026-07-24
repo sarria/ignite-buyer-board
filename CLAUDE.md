@@ -63,9 +63,11 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       │   └── common/              # Sidebar, RichEditor, RichTextField, RichContent, Collapsible
 │       ├── context/                 # AppContext (theme light/dark)
 │       ├── pages/                   # BoardListPage (dashboard), BoardPage,
-│       │   │                        #   BoardSettingsPage, AdminUsersPage
+│       │   │                        #   BoardSettingsPage, AdminUsersPage,
+│       │   │                        #   AdminLuminaFieldsPage
 │       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab
-│       ├── utils/                   # tagColor, userColor, linkify, lastBoard
+│       ├── utils/                   # tagColor, userColor, linkify, lastBoard,
+│       │                            #   boardCache, luminaFields
 │       ├── theme.js                 # light/dark MUI themes
 │       ├── App.jsx                  # router + fixed app-shell layout
 │       └── main.jsx
@@ -92,7 +94,8 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
 `connectDb()` (so serverless invocations work without a startup hook).
 
 ### Collections
-`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates`
+`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates,
+app_settings`
 
 ### Document shapes (current)
 
@@ -120,6 +123,8 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
   tags: [String],
   attachments: [ { name, url /*S3*/, isImage, inline /*true=shown inside description/comment*/, createdAt } ],
   fieldValues: [ { fieldId, valueText, valueNumber, valueDate, valueEnum } ],
+  lumina: { lineitemId, advertiserId, name, attachedAt } | null,  // link ONLY — see Lumina
+                          // legacy shape (pre-line-items) has advertiserId only; still renders
   asanaGid, asanaProjectGid, createdAt, updatedAt }
 
 // subtasks
@@ -131,6 +136,11 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
   bodyHtml,               // rich HTML w/ inline images (null if plain)
   isMigrated, migratedAuthorName, migratedAuthorEmail,
   asanaGid, createdAt /*preserve original Asana timestamp on migration*/ }
+
+// app_settings  — app-wide config as single named docs (string _id). NOT per-board,
+//                 so nothing here is touched by the board delete cascade.
+{ _id: 'luminaFields', advertiserFields: [String], lineItemFields: [String],
+  updatedAt, updatedBy }   // absent doc = show every Lumina field
 
 // card_templates  (per board)
 { _id, boardId, name, descriptionTemplate, defaultColumnId, defaultAssigneeId,
@@ -170,9 +180,15 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
 Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · PUT /subtasks/:id · DELETE /subtasks/:id
 Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body, bodyHtml} · DELETE(admin) /comments/:id
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
+Settings   GET /settings/lumina-fields → {catalog, advertiserFields, lineItemFields, updatedAt}
+           PUT(admin) {advertiserFields[], lineItemFields[]} · DELETE(admin) = back to "show all"
 Templates  GET/POST /boards/:id/templates · PUT /boards/:id/templates/reorder
            PUT /templates/:id · DELETE /templates/:id · POST /templates/:id/apply {columnId?}
 Uploads    POST /uploads/presign {filename, contentType} → {uploadUrl, publicUrl, key}
+Lumina     GET /lumina/status[?warm=1] → {configured}
+           GET /lumina/lineitems?q&limit (search: campaign / advertiser / WO)
+           GET /lumina/lineitems/:id → { lineItem, advertiser, url, fetchedAt }
+           GET /lumina/advertisers?q&limit · GET /lumina/advertisers/:id (legacy cards)
 Health     GET /health  (no auth)
 ```
 
@@ -214,6 +230,10 @@ S3_BUCKET=townsquareignite
 S3_PREFIX=buyer-board/
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
+# Lumina SEM API (read-only). TOKEN IS SERVER-ONLY — never expose to the browser.
+LUMINA_API_BASE=https://release11.townsquarelumina.com/lumina/orders/api/ignite/ext
+LUMINA_API_TOKEN=          # unset → /lumina/* returns 503, panel shows nothing
+LUMINA_WEB_BASE=https://townsquarelumina.com   # web UI host for card→line-item deep links
 # Asana (migration only)
 ASANA_PAT=
 ASANA_WORKSPACE_GID=461175262246056
@@ -396,6 +416,94 @@ My Tasks, premium prompts, mobile-responsive layout.
 
 ---
 
+## Lumina (SEM line-item link)
+
+A card can be linked to a **Lumina line item** so buyers see its live data on the card
+**and get the Lumina link handed to them** — the goal is to end the copy/paste from
+Lumina into Asana/here, not to reproduce it.
+
+**Why the line item (not the advertiser) is the unit:** the migrated Asana cards prove
+it — 241 of 2415 cards contain a pasted `…/lumina/view/lineitem/{sem|spark}/{id}` URL,
+and card titles are the `platformAdvertiserName`. Buyers work per campaign. Attaching an
+advertiser showed every line item it owns, which is noise.
+
+**Core decision — we store the LINK, not the DATA.** The card holds only
+`lumina: { lineitemId, advertiserId, name }`; every drawer open re-pulls the line item +
+its parent advertiser from Lumina. No copy in Mongo → nothing to sync, nothing to go
+stale, nothing to clean up on delete. (`name` is display-only, so the header renders
+before the fetch lands.) Revisit only if we need offline/historical snapshots.
+
+- **Server** `server/lib/lumina.js` — read-only client for the SEM (non-inhome) cohort.
+  Token is **server-side only** (`LUMINA_API_TOKEN`); the browser only ever calls our
+  `/api/lumina/*`. **Pages at `limit=100`, sequentially** — the guide says max 1000, but
+  Lumina's owner asked for ~100 at a time to go easy on their Mongo. Never burst in
+  parallel. `server/index.js` warms the advertiser cache in the background at startup
+  (best-effort, long-lived server only) so no user pays the ~16-request full pull.
+  The **advertiser list (~1500 rows) is cached in module memory for 10 min** and
+  **deduped on `luminaAdvertiserId`** (Lumina returns one row per platform account) into
+  `{ ...advertiser, accounts: [...] }`. **That cache is for the SEARCH BOX ONLY** — a
+  slightly stale name in a dropdown is harmless. It is refreshed lazily (on the first
+  request after the TTL lapses), never on a timer, and on Vercel it dies with the
+  function instance; the LINE-ITEM list (~3300 rows) is cached the same way, for the
+  attach dropdown. The card read paths (`lineItemSnapshot` / `advertiserSnapshot`)
+  deliberately do NOT use those caches — they fetch live, so nothing on a card is stale.
+  Lumina has no by-id endpoints — you get one record by filtering the list endpoint
+  (`?luminaLineitemId=` / `?luminaAdvertiserId=`).
+  `luminaUrl()` builds the deep link: `{LUMINA_WEB_BASE}/lumina/view/lineitem/{sem|spark}
+  /{id}` — verified byte-identical to the URLs buyers pasted into Asana. TODO(lumina):
+  confirm the segment rule with Stephen ("beta" also appears; `product` can be
+  "SEM/Spark").
+  Upstream failures → `502`; missing token → `503`.
+- **API** `GET /lumina/advertisers?q=` (search, ranked prefix→substring→account-id) ·
+  `GET /lumina/lineitems?q=` (search by campaign / advertiser / WO number) ·
+  `GET /lumina/lineitems/:id` → `{ lineItem, advertiser, url, fetchedAt }` — the normal
+  card read path; `url` is the Lumina deep link we generate ·
+  `GET /lumina/advertisers/:id` → `{ advertiser, lineItems, fetchedAt }` (legacy cards) ·
+  `GET /lumina/status[?warm=1]` → `{ configured }`; `warm=1` kicks the advertiser-cache
+  fill **fire-and-forget** (answers in ~7ms, never waits on Lumina). BoardPage pings it
+  once on mount so the attach-search is warm before anyone opens a card.
+- **Client** `components/Card/LuminaPanel.jsx` in the card drawer (between custom fields
+  and Description). Not linked → debounced Autocomplete over LINE ITEMS, searchable by
+  campaign name, advertiser or WO number (works on new AND existing/imported cards —
+  deliberately not in the column's one-line create composer). Attached → a **collapsible
+  box** headed `Lumina · <campaign>` with a live status line ("Fetching from Lumina…" →
+  "Updated 2:14:03 PM · Spark · Casper"), an **Open in Lumina** button (the generated
+  deep link), refresh + detach.
+  The fetch is **never awaited by the drawer** — the rest of the card is on screen
+  immediately and the box fills in when Lumina answers. Read-only on archived/completed.
+- **`components/Card/LuminaSnapshot.jsx`** — presentation, styled after Lumina's own
+  line-item page: grouped sections (Product / Campaign / Platform / Identifiers) with a
+  colored header + rule and bold-label / value rows; each line item is its own nested
+  collapsible (auto-expanded when there are ≤2). Keys are humanized via a `LABELS` map.
+  Any field not claimed by a named section falls into an "Other" section, so new API
+  fields appear without a code change. Note the API only returns 13 line-item fields
+  (no budget/flighting/team data like Lumina's own UI shows).
+- **Which fields show is a GLOBAL admin setting**, not hardcoded: `/admin/lumina-fields`
+  (`AdminLuminaFieldsPage`, sidebar → "Lumina fields") is a checkbox picker over the
+  field catalog, stored in `app_settings._id='luminaFields'`. Applies to every board and
+  user; takes effect the next time a card is opened. **No saved doc = show everything**
+  (so newly-added Lumina fields appear by default) — `null` and `[]` mean different
+  things: `null` = unset/show-all, `[]` = deliberately hide that group. The server
+  filters the selection through `FIELD_CATALOG` on save, so display order is always
+  catalog order regardless of click order and a stale client can't inject unknown keys.
+  Read path is cached per tab in `api/settings.js`, so it costs one request, not one per
+  card open; a failure falls back to showing everything rather than hiding data.
+  Labels live in `utils/luminaFields.js` (shared by the panel and the picker so they
+  can't drift), which also flags the sparse fields in the picker UI.
+- **The field set is uniform across advertisers** — verified 2026-07-24 by scanning the
+  whole release11 cohort: every advertiser record has the same 9 keys, every line item
+  the same 13 (only advertiser `platformParentId` is ever absent, 17%). So the catalog is
+  a fixed list in `lumina.js`, not discovered per record. What varies is whether a field
+  is *filled*: `subProduct` empty on ~24% of line items, advertiser `platformParentId`
+  ~21%, `luminaCampaignName` ~2%. Empty values render as `—`; rows are not hidden for
+  being blank (a card would otherwise look inconsistent between advertisers).
+- **Gotchas (from the Lumina guide):** `platform` is always `"googleads"` — ignore it;
+  the real channel is the line item's `subProduct` (Bing shows up there).
+
+**Why a setting instead of a curated list:** rather than guessing which of Lumina's
+fields buyers need, they pick — and can change it any time without a deploy. Default
+stays "show everything" until someone narrows it.
+
 ## Migration (Asana → MongoDB)
 
 Standalone scripts in `migration/` (read Asana, write JSON, then seed Mongo). Both
@@ -508,6 +616,27 @@ All route handlers try/catch → central error middleware; error shape
   rich description editing (images preserved), and add/remove attachments in the
   Attachments section. Remove deletes from S3, so the IAM policy needs
   **`s3:DeleteObject`**. Optional, not built: slash ("/") menu, @mentions.
+- **Lumina search at scale (DEFERRED on purpose, 2026-07-24 — revisit before prod):**
+  attach-search works by caching the WHOLE advertiser list in server memory, because
+  `/sem/advertisers` has no name-search param (only exact-match `luminaAdvertiserId` /
+  `advertiserType` / `platform`). Cost is linear: at 100 rows/page that's N/100
+  sequential requests per cold instance — 15 at today's ~1,500 rows (fine), 200 at
+  20,000 (NOT fine; that hammers Lumina's Mongo, which they asked us not to do).
+  Judged acceptable at current volume. **If prod volume is much larger, fix it before
+  the demo** — preferred: ask Lumina for a `?q=` partial-name filter on
+  `/sem/advertisers` (then drop the cache entirely and search upstream); fallback:
+  mirror advertisers into our Mongo on a periodic sync with a text index (new
+  collection → must be wired into the deletion rules). Do NOT just raise the page size.
+- **Per-board override of the Lumina field selection.** Deliberately NOT built
+  (2026-07-24): the setting is global because the field set is identical for every
+  advertiser, so the only reason to diverge is team preference — add it when a team
+  actually asks. Shape is ready for it: put `luminaFields` on the board doc (`null` =
+  inherit global) and add a Lumina tab to board settings; nothing about the global
+  storage needs to change.
+- **Lumina phase 2:** show the linked advertiser on the board card, filter a board by
+  advertiser, real spend/pacing metrics if Lumina exposes them. Ask Lumina for the
+  budget / flighting / Ignite-team fields their own UI shows — the ext API returns none
+  of them.
 - **Import Asana task templates** (templates are not exported/seeded yet).
 - **Private S3 bucket** via presigned/CloudFront (currently public).
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during

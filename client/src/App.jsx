@@ -7,6 +7,7 @@ import BoardListPage from './pages/BoardListPage';
 import BoardPage from './pages/BoardPage';
 import BoardSettingsPage from './pages/BoardSettingsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminLuminaFieldsPage from './pages/AdminLuminaFieldsPage';
 import { getLastBoardId } from './utils/lastBoard';
 
 // Land on the last board the user viewed, or the dashboard if there's no history.
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/boards/:id" element={<BoardPage />} />
             <Route path="/boards/:id/settings" element={<BoardSettingsPage />} />
             <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/lumina-fields" element={<AdminLuminaFieldsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

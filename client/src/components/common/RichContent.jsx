@@ -11,12 +11,29 @@ const CONFIG = {
   ALLOWED_ATTR: ['href', 'src', 'alt', 'target', 'rel', 'data-asana-gid'],
 };
 
+// Parse-and-set rather than regex: attribute rewriting on an HTML string is easy
+// to get subtly wrong, and the input is already sanitized at this point.
+function withNewTabLinks(htmlString) {
+  const doc = new DOMParser().parseFromString(htmlString, 'text/html');
+  for (const a of doc.querySelectorAll('a[href]')) {
+    if (a.getAttribute('href').trim().toLowerCase().startsWith('mailto:')) continue;
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer'); // never leak window.opener
+  }
+  return doc.body.innerHTML;
+}
+
 export default function RichContent({ html, sx }) {
   // Sanitize once per unique html — expensive (DOMPurify + regex), and otherwise
   // re-runs on every parent re-render (e.g. each keystroke in a sibling field).
   const clean = useMemo(() => {
     if (!html) return '';
     let c = DOMPurify.sanitize(html, CONFIG);
+    // Force every link to open in a new tab. Migrated Asana anchors carry no
+    // target, and following one in-place would blow away the board (and any
+    // unsaved editor state) to visit Lumina/DCM/GTM. mailto: is left alone —
+    // opening a blank tab to hand off to a mail client is just litter.
+    c = withNewTabLinks(c);
     // Wrap each image so we can show a download/open button on hover.
     c = c.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
       const src = attrs.match(/src="([^"]*)"/)?.[1] || '';
@@ -33,6 +50,9 @@ export default function RichContent({ html, sx }) {
   return (
     <Box
       className="rich-content"
+      // Don't let a link/image click bubble to a parent's click-to-edit (the
+      // description box) — otherwise following a link also opens the editor.
+      onClick={e => { if (e.target.closest('a')) e.stopPropagation(); }}
       dangerouslySetInnerHTML={{ __html: clean }}
       sx={{
         whiteSpace: 'pre-wrap',

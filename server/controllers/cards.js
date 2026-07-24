@@ -112,6 +112,23 @@ async function updateCard(req, res) {
     $set.isCompleted = isCompleted;
     $set.completedAt = isCompleted ? new Date() : null;
   }
+  // Lumina link: we persist ONLY ids (+ a display name, so the panel header can
+  // render before the live fetch lands). The data itself is always re-pulled from
+  // Lumina, never copied into the card. Pass null to detach.
+  if (req.body.lumina !== undefined) {
+    const l = req.body.lumina;
+    // Cards map to a LINE ITEM (that's what buyers work on and what Lumina deep-links
+    // to). advertiserId is kept alongside it for context. Older cards linked before
+    // this change have only advertiserId — both shapes stay readable.
+    $set.lumina = l && (l.lineitemId || l.advertiserId)
+      ? {
+          lineitemId: l.lineitemId ? String(l.lineitemId) : null,
+          advertiserId: l.advertiserId ? String(l.advertiserId) : null,
+          name: l.name || l.advertiserName || '',
+          attachedAt: new Date(),
+        }
+      : null;
+  }
   if (tags !== undefined) {
     // Normalize: trim, drop empties, de-duplicate.
     $set.tags = [...new Set((tags || []).map(t => String(t).trim()).filter(Boolean))];
