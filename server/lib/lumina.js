@@ -4,28 +4,28 @@
 // The service token is a secret — it never leaves the server; the browser talks
 // only to our own /api/lumina/* routes.
 //
-// The advertiser cohort is small (~1500 rows) and changes slowly, so we pull the
-// whole list once and cache it in module memory for TTL_MS. That makes typeahead
-// search instant and costs Lumina 2 requests per warm server (a serverless cold
-// start re-pulls). Line items are always fetched live — they're per-advertiser
-// and cheap.
+// NOTE (2026-07-27): rewritten for Lumina's new API. Every field was renamed
+// (luminaAdvertiserId → advertiserId, luminaLineitemId → lineitemId,
+// luminaCampaignName → campaignName, woNumber → woOrderNumber, …) and two things
+// changed the design:
+//   1. Both list endpoints now support `?name=` (case-insensitive contains), so we
+//      NO LONGER cache the cohort in memory — search runs upstream. That also
+//      retires the "search at scale" problem we had deferred.
+//   2. `GET /sem/lineitems/:id` returns the full order-form document (~75 fields:
+//      budget, dates, KPI, geo, team, GTM, build details). That is the card read
+//      path; the list is only for the attach dropdown.
 
 const BASE = process.env.LUMINA_API_BASE
   || 'https://release11.townsquarelumina.com/lumina/orders/api/ignite/ext';
 const TOKEN = process.env.LUMINA_API_TOKEN;
 
-const TTL_MS = 10 * 60 * 1000;
-// Stephen Alba (Lumina, 2026-07-24): the guide says limit=1000, but "try to do about
-// 100 at a time so it's not too hard on mongo". So we page at 100, sequentially —
-// never a parallel burst. Cost lands almost entirely on the one-time full-list warm
-// (~16 requests); the per-card snapshot is filtered and fits in a page or two.
+// Web (not API) host. Lumina hands us a relative `deepLinkPath` per line item, so
+// we only supply the host — no segment logic on our side.
+const WEB_BASE = process.env.LUMINA_WEB_BASE || 'https://www.townsquarelumina.com';
+
+// Lumina asked us to page at ~100 rather than the documented max of 1000, to go
+// easy on their Mongo. Sequential only — never a parallel burst.
 const PAGE = 100;
-
-// Web (not API) host, for deep-linking a line item back into Lumina's own UI.
-const WEB_BASE = process.env.LUMINA_WEB_BASE || 'https://townsquarelumina.com';
-
-let cache = { at: 0, advertisers: null, promise: null };
-let liCache = { at: 0, items: null, promise: null };
 
 function configured() {
   return Boolean(TOKEN);
@@ -45,14 +45,13 @@ async function call(path, params = {}) {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
   if (!res.ok) {
     const err = new Error(`Lumina ${res.status} on ${path}`);
-    err.status = res.status === 401 || res.status === 403 ? 502 : 502;
+    err.status = 502;
     err.code = 'LUMINA_UPSTREAM';
     throw err;
   }
   return res.json();
 }
 
-// Page through a list endpoint until every record is collected.
 async function fetchAll(path, params = {}) {
   const out = [];
   let skip = 0;
@@ -64,174 +63,117 @@ async function fetchAll(path, params = {}) {
   }
 }
 
-// One row per platform account, so a Lumina advertiser can repeat. Collapse to
-// one entry per luminaAdvertiserId, keeping every platform account under it.
-function dedupeAdvertisers(rows) {
-  const byId = new Map();
-  for (const r of rows) {
-    const id = r.luminaAdvertiserId;
-    if (!id) continue;
-    let adv = byId.get(id);
-    if (!adv) {
-      adv = {
-        luminaAdvertiserId: id,
-        luminaAdvertiserName: r.luminaAdvertiserName,
-        luminaAdvertiserSlug: r.luminaAdvertiserSlug,
-        advertiserType: r.advertiserType,
-        pacingStatus: r.pacingStatus,
-        accounts: [],
-      };
-      byId.set(id, adv);
+const withUrl = li => (li?.deepLinkPath ? { ...li, url: WEB_BASE + li.deepLinkPath } : li);
+
+// ---- attach dropdown ------------------------------------------------------
+
+// Upstream `?name=` searches campaign name + company name. Buyers also search by
+// WO number, which `name` does NOT cover, so we fire the exact WO filter too and
+// merge — cheap (two small queries) and it means one box handles both.
+async function searchLineItems(q, limit = 20) {
+  const term = (q || '').trim();
+  if (!term) {
+    const page = await call('/sem/lineitems', { limit });
+    return (page.items || []).map(withUrl);
+  }
+
+  const queries = [call('/sem/lineitems', { name: term, limit })];
+  if (/^[A-Za-z0-9-]{3,}$/.test(term)) {
+    queries.push(call('/sem/lineitems', { woOrderNumber: term, limit }));
+  }
+  const pages = await Promise.all(queries.map(p => p.catch(() => ({ items: [] }))));
+
+  const seen = new Set();
+  const merged = [];
+  for (const page of pages) {
+    for (const li of page.items || []) {
+      if (seen.has(li.lineitemId)) continue;
+      seen.add(li.lineitemId);
+      merged.push(withUrl(li));
     }
-    adv.accounts.push({
-      platformAdvertiserId: r.platformAdvertiserId,
-      platformAdvertiserName: r.platformAdvertiserName,
-      platformParentId: r.platformParentId,
-      advertiserType: r.advertiserType,
-      pacingStatus: r.pacingStatus,
-    });
   }
-  return [...byId.values()].sort((a, b) =>
-    (a.luminaAdvertiserName || '').localeCompare(b.luminaAdvertiserName || '')
-  );
-}
-
-async function allAdvertisers({ force = false } = {}) {
-  const fresh = cache.advertisers && Date.now() - cache.at < TTL_MS;
-  if (fresh && !force) return cache.advertisers;
-  // Collapse concurrent cold-start callers onto one upstream pull.
-  if (cache.promise && !force) return cache.promise;
-
-  cache.promise = (async () => {
-    const rows = await fetchAll('/sem/advertisers');
-    cache = { at: Date.now(), advertisers: dedupeAdvertisers(rows), promise: null };
-    return cache.advertisers;
-  })();
-  try {
-    return await cache.promise;
-  } catch (e) {
-    cache.promise = null;
-    throw e;
-  }
+  return merged.slice(0, limit);
 }
 
 async function searchAdvertisers(q, limit = 20) {
-  const list = await allAdvertisers();
-  const term = (q || '').trim().toLowerCase();
-  if (!term) return list.slice(0, limit);
-  const scored = [];
-  for (const a of list) {
-    const name = (a.luminaAdvertiserName || '').toLowerCase();
-    const acctHit = a.accounts.some(
-      ac => (ac.platformAdvertiserName || '').toLowerCase().includes(term)
-        || String(ac.platformAdvertiserId || '').includes(term)
-    );
-    const at = name.indexOf(term);
-    if (at === 0) scored.push([0, a]);
-    else if (at > 0) scored.push([1, a]);
-    else if (acctHit || a.luminaAdvertiserId === term) scored.push([2, a]);
-    if (scored.length > 400) break;
-  }
-  return scored.sort((x, y) => x[0] - y[0]).slice(0, limit).map(s => s[1]);
+  const page = await call('/sem/advertisers', { name: (q || '').trim() || undefined, limit });
+  return page.items || [];
 }
 
-// Everything Lumina knows about one advertiser: the advertiser record plus all of
-// its line items. This is what a card re-pulls each time it opens, so BOTH halves
-// are fetched live in parallel — the cached list above is only for search, where
-// a slightly stale name is harmless. (Lumina has no single-advertiser endpoint;
-// you get one by filtering the list endpoint.)
+// ---- card read path -------------------------------------------------------
+
+// The full order-form document for one line item. Lumina answers 200 with
+// { found: false } for an unknown id OR one outside the SEM cohort — that is not
+// an error, it's "this link no longer resolves", so we surface it as null.
+async function lineItemSnapshot(id) {
+  const res = await call(`/sem/lineitems/${encodeURIComponent(id)}`);
+  if (!res.found || !res.lineitem) return null;
+  return { lineItem: withUrl(res.lineitem), fetchedAt: new Date().toISOString() };
+}
+
+// Legacy: cards linked before we moved to line items hold only an advertiserId.
 async function advertiserSnapshot(id) {
-  const [advRows, lineItems] = await Promise.all([
-    fetchAll('/sem/advertisers', { luminaAdvertiserId: id }),
-    fetchAll('/sem/lineitems', { luminaAdvertiserId: id }),
+  const [advPage, lineItems] = await Promise.all([
+    call('/sem/advertisers', { advertiserId: id, limit: 1 }),
+    fetchAll('/sem/lineitems', { advertiserId: id }),
   ]);
-  const advertiser = dedupeAdvertisers(advRows)[0] || null;
-  return { advertiser, lineItems, fetchedAt: new Date().toISOString() };
+  const advertiser = (advPage.items || [])[0] || null;
+  if (!advertiser && !lineItems.length) return null;
+  return {
+    advertiser,
+    lineItems: lineItems.map(withUrl),
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
-// ---- line items -----------------------------------------------------------
+// ---- field catalog (for the admin picker) ---------------------------------
 
-// Deep link into Lumina's own UI for a line item. Pattern taken from the links
-// buyers pasted into Asana: /lumina/view/lineitem/{sem|spark}/{luminaLineitemId}.
-// TODO(lumina): confirm the canonical pattern with Stephen — a third segment
-// ("beta") also appears in migrated links, and `product` can be "SEM/Spark".
-function luminaUrl(lineItem) {
-  if (!lineItem?.luminaLineitemId) return null;
-  const seg = String(lineItem.product || '').toLowerCase() === 'spark' ? 'spark' : 'sem';
-  return `${WEB_BASE}/lumina/view/lineitem/${seg}/${lineItem.luminaLineitemId}`;
+// The detail payload is a DOCUMENT, not a fixed schema — its field set varies by
+// product. So the catalog is discovered: sample one line item per product and
+// union their keys. Cached for an hour; falls back to the list-endpoint keys if
+// Lumina is unreachable, so the picker still renders.
+const PRODUCTS = ['SEM', 'SEM/Spark', 'Spark'];
+const FALLBACK_CATALOG = [
+  'campaignName', 'campaignInitiative', 'product', 'subProduct', 'displayName',
+  'status', 'market', 'companyName', 'startDate', 'endDate', 'totalBudget',
+  'woOrderNumber', 'woLineItemNumbers', 'lineitemId', 'orderId', 'advertiserId',
+];
+const CATALOG_TTL_MS = 60 * 60 * 1000;
+let catalogCache = { at: 0, keys: null, promise: null };
+
+async function sampleCatalog() {
+  const keys = new Set();
+  for (const product of PRODUCTS) {
+    try {
+      const page = await call('/sem/lineitems', { product, limit: 1 });
+      const id = page.items?.[0]?.lineitemId;
+      if (!id) continue;
+      const detail = await call(`/sem/lineitems/${id}`);
+      if (detail.found) Object.keys(detail.lineitem).forEach(k => keys.add(k));
+    } catch { /* one product failing shouldn't empty the catalog */ }
+  }
+  return [...keys].sort();
 }
 
-// Same deal as the advertiser list: no name search upstream, so cache the cohort
-// and filter locally. Used ONLY by the attach dropdown.
-async function allLineItems({ force = false } = {}) {
-  const fresh = liCache.items && Date.now() - liCache.at < TTL_MS;
-  if (fresh && !force) return liCache.items;
-  if (liCache.promise && !force) return liCache.promise;
+async function fieldCatalog() {
+  if (catalogCache.keys && Date.now() - catalogCache.at < CATALOG_TTL_MS) return catalogCache.keys;
+  if (catalogCache.promise) return catalogCache.promise;
 
-  liCache.promise = (async () => {
-    const items = await fetchAll('/sem/lineitems');
-    liCache = { at: Date.now(), items, promise: null };
-    return items;
+  catalogCache.promise = (async () => {
+    const keys = await sampleCatalog();
+    const result = keys.length ? keys : FALLBACK_CATALOG;
+    catalogCache = { at: Date.now(), keys: result, promise: null };
+    return result;
   })();
   try {
-    return await liCache.promise;
-  } catch (e) {
-    liCache.promise = null;
-    throw e;
+    return await catalogCache.promise;
+  } catch {
+    catalogCache.promise = null;
+    return FALLBACK_CATALOG;
   }
 }
-
-// Buyers search by campaign name, but also by advertiser and WO number — a WO is
-// often the only thing they have to hand.
-async function searchLineItems(q, limit = 20) {
-  const list = await allLineItems();
-  const term = (q || '').trim().toLowerCase();
-  if (!term) return list.slice(0, limit);
-  const scored = [];
-  for (const li of list) {
-    const campaign = (li.luminaCampaignName || '').toLowerCase();
-    const adv = (li.luminaAdvertiserName || '').toLowerCase();
-    const wo = String(li.woNumber || '');
-    if (campaign.startsWith(term) || adv.startsWith(term) || wo.startsWith(term)) scored.push([0, li]);
-    else if (campaign.includes(term) || adv.includes(term) || wo.includes(term)) scored.push([1, li]);
-    else if ((li.platformAdvertiserName || '').toLowerCase().includes(term)) scored.push([2, li]);
-    if (scored.length > 600) break;
-  }
-  return scored.sort((a, b) => a[0] - b[0]).slice(0, limit).map(s => s[1]);
-}
-
-// What a card re-pulls on open once it's linked to a line item: the line item
-// itself plus its parent advertiser, both live and in parallel.
-async function lineItemSnapshot(id) {
-  const rows = await fetchAll('/sem/lineitems', { luminaLineitemId: id });
-  const lineItem = rows[0] || null;
-  let advertiser = null;
-  if (lineItem?.luminaAdvertiserId) {
-    const advRows = await fetchAll('/sem/advertisers', { luminaAdvertiserId: lineItem.luminaAdvertiserId });
-    advertiser = dedupeAdvertisers(advRows)[0] || null;
-  }
-  return { lineItem, advertiser, url: luminaUrl(lineItem), fetchedAt: new Date().toISOString() };
-}
-
-// The full set of keys the API returns. Verified 2026-07-24 by scanning the whole
-// release11 cohort (1503 advertisers / 3343 line items): the schema is UNIFORM —
-// every record carries exactly these keys, so this can safely be a fixed list.
-// (What varies is whether a key is *filled*: subProduct is empty on ~24% of line
-// items, advertiser platformParentId on ~21%.) If Lumina adds fields, add them
-// here so they become selectable.
-const FIELD_CATALOG = {
-  advertiser: [
-    'luminaAdvertiserName', 'luminaAdvertiserSlug', 'advertiserType', 'pacingStatus',
-    'luminaAdvertiserId', 'platformAdvertiserName', 'platformAdvertiserId', 'platformParentId',
-  ],
-  lineItem: [
-    'product', 'subProduct', 'luminaCampaignName', 'woNumber', 'market',
-    'platformAdvertiserName', 'platformAdvertiserId', 'platformParentId', 'platform',
-    'luminaLineitemId', 'luminaAdvertiserId', 'luminaAdvertiserName', 'advertiserType',
-  ],
-};
 
 module.exports = {
-  configured, searchAdvertisers, advertiserSnapshot, allAdvertisers,
-  searchLineItems, lineItemSnapshot, allLineItems, luminaUrl, FIELD_CATALOG,
+  configured, searchLineItems, searchAdvertisers,
+  lineItemSnapshot, advertiserSnapshot, fieldCatalog, FALLBACK_CATALOG,
 };

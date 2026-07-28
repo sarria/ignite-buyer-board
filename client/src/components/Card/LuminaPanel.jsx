@@ -15,10 +15,11 @@ import { luminaFieldFilter } from '../../utils/luminaFields';
 import LuminaSnapshot from './LuminaSnapshot';
 
 // A card links to a Lumina LINE ITEM — that's the unit buyers work on and what
-// Lumina deep-links to. We store only its id and re-pull live every time the card
-// opens, and we hand back the Lumina URL so nobody has to go find it. The fetch is
-// fire-and-forget on mount — the rest of the card renders immediately and this box
-// fills in when Lumina answers.
+// Lumina deep-links to. We store only its id and re-pull the full order-form
+// document (~75 fields) live every time the card opens, and surface Lumina's own
+// `deepLinkPath` so nobody has to go find the link. The fetch is fire-and-forget
+// on mount — the rest of the card renders immediately and this box fills in when
+// Lumina answers.
 // Cards linked before this change hold only an advertiserId; they still render
 // (advertiser view) until re-linked to a line item.
 
@@ -52,23 +53,21 @@ function AttachSearch({ onAttach }) {
       options={options}
       loading={loading}
       filterOptions={x => x} // server already searched/ranked
-      getOptionLabel={o => o.luminaCampaignName || o.luminaAdvertiserName || o.luminaLineitemId}
-      isOptionEqualToValue={(o, v) => o.luminaLineitemId === v.luminaLineitemId}
+      getOptionLabel={o => o.campaignName || o.companyName || o.lineitemId}
+      isOptionEqualToValue={(o, v) => o.lineitemId === v.lineitemId}
       onInputChange={(_, v) => setInput(v)}
       onChange={(_, v) => v && onAttach(v)}
       noOptionsText="No matching line item"
-      // First search on a cold server waits on the full line-item pull — say so
-      // rather than showing a bare spinner.
-      loadingText="Loading line items from Lumina…"
+      loadingText="Searching Lumina…"
       renderOption={({ key, ...props }, o) => (
         <Box component="li" key={key} {...props}>
           <Box sx={{ minWidth: 0 }}>
-            {/* Campaign name is the buyer's handle, but it's null ~2% of the time. */}
+            {/* Campaign name is the buyer's handle, but it isn't always set. */}
             <Typography variant="body2" noWrap>
-              {o.luminaCampaignName || `${o.luminaAdvertiserName} (no campaign name)`}
+              {o.campaignName || `${o.companyName || 'Line item'} (no campaign name)`}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {[o.luminaAdvertiserName, o.product, o.market, o.woNumber && `WO ${o.woNumber}`]
+              {[o.companyName, o.product, o.status, o.market, o.woOrderNumber && `WO ${o.woOrderNumber}`]
                 .filter(Boolean).join(' · ')}
             </Typography>
           </Box>
@@ -145,16 +144,17 @@ export default function LuminaPanel({ lumina, readOnly, onChange }) {
         {readOnly
           ? <Typography variant="body2" color="text.secondary">No line item attached.</Typography>
           : <AttachSearch onAttach={li => onChange({
-              lineitemId: li.luminaLineitemId,
-              advertiserId: li.luminaAdvertiserId,
-              name: li.luminaCampaignName || li.luminaAdvertiserName || '',
+              lineitemId: li.lineitemId,
+              advertiserId: li.advertiserId,
+              name: li.campaignName || li.companyName || '',
             })} />}
       </Box>
     );
   }
 
-  const name = snap?.lineItem?.luminaCampaignName
-    || snap?.advertiser?.luminaAdvertiserName
+  const name = snap?.lineItem?.campaignName
+    || snap?.lineItem?.companyName
+    || snap?.advertiser?.companyName
     || lumina.name || lumina.advertiserName || linked;
   const status = loading
     ? 'Fetching from Lumina…'
@@ -180,7 +180,8 @@ export default function LuminaPanel({ lumina, readOnly, onChange }) {
             <Typography variant="caption" color="text.secondary">
               {status}
               {!loading && !error && snap?.lineItem
-                ? ` · ${[snap.lineItem.product, snap.lineItem.market].filter(Boolean).join(' · ')}`
+                ? ` · ${[snap.lineItem.product, snap.lineItem.status, snap.lineItem.market]
+                    .filter(Boolean).join(' · ')}`
                 : ''}
               {!loading && !error && snap?.lineItems
                 ? ` · ${snap.lineItems.length} line item${snap.lineItems.length === 1 ? '' : 's'}`
@@ -189,12 +190,12 @@ export default function LuminaPanel({ lumina, readOnly, onChange }) {
           )}
         </Box>
         {loading && <CircularProgress size={14} />}
-        {snap?.url && (
+        {(snap?.lineItem?.url || snap?.url) && (
           <Tooltip title="Open this line item in Lumina">
             <IconButton
               size="small"
               component="a"
-              href={snap.url}
+              href={snap.lineItem?.url || snap.url}
               target="_blank"
               rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}

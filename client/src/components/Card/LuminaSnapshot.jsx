@@ -1,44 +1,64 @@
 import { useState } from 'react';
 import { Box, Typography, Divider, Collapse } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { luminaLabel as label } from '../../utils/luminaFields';
+import {
+  luminaLabel as label, formatLuminaValue, LUMINA_HIDDEN,
+} from '../../utils/luminaFields';
 
-// Renders a Lumina snapshot in Lumina's own visual language: grouped sections,
-// a titled header with a rule under it, and bold label / value rows.
-// Which fields appear is an admin setting (/admin/lumina-fields) passed in as
-// `advertiserShow` / `lineItemShow` Sets; null means unconfigured → show everything.
-// Fields we have no named section for fall into "Other", so new API fields still
-// surface without a code change.
+// Renders a Lumina line item in Lumina's own visual language: grouped sections
+// with a colored header + rule, and bold-label / value rows.
+//
+// The detail payload is a DOCUMENT whose field set varies by product, so the
+// sections below are a display order, not a schema: any key we don't place lands
+// in "Other", and anything Lumina adds later shows up with no code change.
+// Which fields appear at all is the admin setting (/admin/lumina-fields), passed
+// in as a Set; null means unconfigured → show everything.
 
+const SECTIONS = [
+  ['Product', ['product', 'subProduct', 'displayName', 'platforms', 'kpi', 'goalType', 'objective']],
+  ['Ignite Team', ['aeUsernameDisplay', 'dslUsernameDisplay', 'dcmUsernameDisplay', 'buyerSearchUsernameDisplay']],
+  ['Campaign', ['campaignName', 'campaignInitiative', 'type', 'campaignType', 'status',
+    'workflowStepName', 'startDate', 'endDate', 'market', 'woOrderNumber',
+    'woLineItemNumbers', 'sensitiveCatCampaign']],
+  ['Budget', ['contractedBudget', 'totalBudget', 'adjustedTotalBudget', 'monthlyBudget',
+    'includeMakeGood', 'includeRateException']],
+  ['Geo Targeting', ['geoTargetingType', 'states', 'cities', 'zipcodes', 'needRadius',
+    'isExclusion', 'exclusionDetails']],
+  ['Google', ['gtmAccount', 'gtmContainerId', 'gaEmail', 'gaId', 'googleAdsAcc',
+    'linkToGBP', 'linkedGBP', 'emailGBP', 'trackCallComplGBP']],
+  ['Build Details', ['buildDetails', 'buildReport', 'additionalDetails']],
+  ['Advertiser & Order', ['companyName', 'advertiserName', 'companySlug', 'advertiserRegion',
+    'orderName', 'orderStartDate', 'orderEndDate', 'createdDate']],
+  ['Identifiers', ['lineitemId', 'orderId', 'advertiserId', 'tapLineitemId']],
+];
+const PLACED = new Set(SECTIONS.flatMap(([, keys]) => keys));
 
-function formatValue(v) {
-  if (v === null || v === undefined || v === '') return '—';
-  if (Array.isArray(v)) return v.length ? v.join(', ') : '—';
-  if (typeof v === 'object') return JSON.stringify(v);
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-  return String(v);
+const shown = (data, keys, show) =>
+  keys.filter(k => k in data && !LUMINA_HIDDEN.has(k) && (!show || show.has(k)));
+
+function Row({ label: text, children }) {
+  return (
+    <Box sx={{ display: 'contents' }}>
+      <Typography variant="body2" fontWeight={700}>{text}</Typography>
+      <Typography variant="body2" color="text.secondary" component="div" sx={{ wordBreak: 'break-word' }}>
+        {children}
+      </Typography>
+    </Box>
+  );
 }
 
-// Keys that exist on this record AND are selected for display.
-const visible = (data, keys, show) => keys.filter(k => k in data && (!show || show.has(k)));
-
-function Rows({ data, keys, show }) {
-  // `show` is a Set of admin-selected keys, or null when unconfigured (= show all).
-  const present = keys.filter(k => k in data && (!show || show.has(k)));
-  if (!present.length) return null;
+// A nested object (e.g. buildDetails) renders as an indented mini-list instead of
+// raw JSON — Lumina's own form shows these as sub-fields.
+function NestedValue({ value }) {
+  const entries = Object.entries(value).filter(([k]) => !LUMINA_HIDDEN.has(k));
+  if (!entries.length) return '—';
   return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(110px, 34%) 1fr',
-        columnGap: 2, rowGap: 0.75, mb: 2,
-      }}
-    >
-      {present.map(k => (
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: 1.5, rowGap: 0.25 }}>
+      {entries.map(([k, v]) => (
         <Box key={k} sx={{ display: 'contents' }}>
-          <Typography variant="body2" fontWeight={700}>{label(k)}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
-            {formatValue(data[k])}
+          <Typography variant="caption" color="text.secondary">{label(k)}</Typography>
+          <Typography variant="caption" sx={{ wordBreak: 'break-word' }}>
+            {formatLuminaValue(k, v) ?? JSON.stringify(v)}
           </Typography>
         </Box>
       ))}
@@ -46,9 +66,31 @@ function Rows({ data, keys, show }) {
   );
 }
 
-// Hides itself when the admin deselected every field it would have shown.
-function Section({ title, children, hidden }) {
-  if (hidden) return null;
+function Rows({ data, keys }) {
+  if (!keys.length) return null;
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(110px, 38%) 1fr',
+        columnGap: 2, rowGap: 0.75, mb: 2,
+      }}
+    >
+      {keys.map(k => {
+        const formatted = formatLuminaValue(k, data[k]);
+        return (
+          <Row key={k} label={label(k)}>
+            {formatted !== null
+              ? formatted
+              : <NestedValue value={data[k]} />}
+          </Row>
+        );
+      })}
+    </Box>
+  );
+}
+
+function Section({ title, children }) {
   return (
     <Box sx={{ mb: 1 }}>
       <Typography variant="subtitle2" color="primary" sx={{ mb: 0.5 }}>{title}</Typography>
@@ -58,25 +100,30 @@ function Section({ title, children, hidden }) {
   );
 }
 
-// Any key not claimed by a named section still gets rendered.
-function Other({ data, used, show }) {
-  const rest = Object.keys(data).filter(k => !used.includes(k) && k !== 'accounts');
-  if (!visible(data, rest, show).length) return null;
-  return <Section title="Other"><Rows data={data} keys={rest} show={show} /></Section>;
+function Document({ data, show }) {
+  const other = Object.keys(data).filter(k => !PLACED.has(k));
+  const groups = [...SECTIONS, ['Other', other]]
+    .map(([title, keys]) => [title, shown(data, keys, show)])
+    .filter(([, keys]) => keys.length);
+
+  if (!groups.length) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No fields selected — see Lumina fields in the sidebar.
+      </Typography>
+    );
+  }
+  return groups.map(([title, keys]) => (
+    <Section key={title} title={title}><Rows data={data} keys={keys} /></Section>
+  ));
 }
 
-const LI_PRODUCT = ['product', 'subProduct'];
-const LI_CAMPAIGN = ['luminaCampaignName', 'woNumber', 'market'];
-const LI_PLATFORM = ['platformAdvertiserName', 'platformAdvertiserId', 'platformParentId', 'platform'];
-const LI_IDS = ['luminaLineitemId', 'luminaAdvertiserId', 'advertiserType'];
-const LI_USED = [...LI_PRODUCT, ...LI_CAMPAIGN, ...LI_PLATFORM, ...LI_IDS, 'luminaAdvertiserName'];
-
-function LineItem({ item, defaultOpen, show }) {
+// Legacy shape: a card linked to an advertiser rather than a line item shows the
+// advertiser plus a collapsible per line item.
+function LegacyLineItem({ item, defaultOpen, show }) {
   const [open, setOpen] = useState(defaultOpen);
-  const title = item.luminaCampaignName || item.luminaLineitemId || 'Line item';
-  const sub = [item.product, (item.subProduct || []).join(', '), item.market]
-    .filter(Boolean).join(' · ');
-
+  const title = item.campaignName || item.displayName || item.lineitemId;
+  const sub = [item.product, item.status, item.market].filter(Boolean).join(' · ');
   return (
     <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 1 }}>
       <Box
@@ -96,84 +143,38 @@ function LineItem({ item, defaultOpen, show }) {
         />
       </Box>
       <Collapse in={open} unmountOnExit>
-        <Box sx={{ px: 1.25, pb: 1 }}>
-          {[
-            ['Product', LI_PRODUCT], ['Campaign', LI_CAMPAIGN],
-            ['Platform', LI_PLATFORM], ['Identifiers', LI_IDS],
-          ].map(([title, keys]) => (
-            <Section key={title} title={title} hidden={!visible(item, keys, show).length}>
-              <Rows data={item} keys={keys} show={show} />
-            </Section>
-          ))}
-          <Other data={item} used={LI_USED} show={show} />
-        </Box>
+        <Box sx={{ px: 1.25, pb: 1 }}><Document data={item} show={show} /></Box>
       </Collapse>
     </Box>
   );
 }
 
-const ADV_KEYS = ['luminaAdvertiserName', 'luminaAdvertiserSlug', 'advertiserType', 'pacingStatus', 'luminaAdvertiserId'];
-const ACCT_KEYS = ['platformAdvertiserName', 'platformAdvertiserId', 'platformParentId', 'pacingStatus', 'advertiserType'];
-
 export default function LuminaSnapshot({ snap, advertiserShow = null, lineItemShow = null }) {
-  // Two shapes: a card linked to a line item ({ lineItem }) — the normal case —
-  // or a legacy advertiser-linked card ({ lineItems: [...] }).
-  const { advertiser, lineItem = null } = snap;
+  const { lineItem = null, advertiser = null } = snap;
   const lineItems = snap.lineItems || [];
-  const accounts = advertiser?.accounts || [];
-  const acctVisible = accounts.length > 0
-    && visible(accounts[0], ACCT_KEYS, advertiserShow).length > 0;
+
+  // Normal case: the card is linked to one line item — show its document.
+  if (lineItem) return <Box><Document data={lineItem} show={lineItemShow} /></Box>;
 
   return (
     <Box>
       {advertiser && (
-        <>
-          <Section title="Advertiser" hidden={!visible(advertiser, ADV_KEYS, advertiserShow).length}>
-            <Rows data={advertiser} keys={ADV_KEYS} show={advertiserShow} />
-          </Section>
-          <Other data={advertiser} used={ADV_KEYS} show={advertiserShow} />
-        </>
-      )}
-
-      {acctVisible && (
-        <Section title={`Platform Accounts (${accounts.length})`}>
-          {accounts.map((a, i) => (
-            <Rows key={a.platformAdvertiserId || i} data={a} keys={ACCT_KEYS} show={advertiserShow} />
-          ))}
+        <Section title="Advertiser">
+          <Rows data={advertiser} keys={shown(advertiser, Object.keys(advertiser), advertiserShow)} />
         </Section>
       )}
-
-      {/* Linked to one line item: render its fields inline — no need to make the
-          buyer expand the very thing they attached. */}
-      {lineItem && (
-        <>
-          {[
-            ['Product', LI_PRODUCT], ['Campaign', LI_CAMPAIGN],
-            ['Platform', LI_PLATFORM], ['Identifiers', LI_IDS],
-          ].map(([title, keys]) => (
-            <Section key={title} title={title} hidden={!visible(lineItem, keys, lineItemShow).length}>
-              <Rows data={lineItem} keys={keys} show={lineItemShow} />
-            </Section>
-          ))}
-          <Other data={lineItem} used={LI_USED} show={lineItemShow} />
-        </>
-      )}
-
-      {/* Legacy advertiser-linked card: all of the advertiser's line items. */}
-      {!lineItem && (
-        <Section title={`Line Items (${lineItems.length})`}>
-          {lineItems.length === 0
-            ? <Typography variant="body2" color="text.secondary">None in Lumina.</Typography>
-            : lineItems.map((li, i) => (
-                <LineItem
-                  key={li.luminaLineitemId || i}
-                  item={li}
-                  defaultOpen={lineItems.length <= 2}
-                  show={lineItemShow}
-                />
-              ))}
-        </Section>
-      )}
+      <Section title={`Line Items (${lineItems.length})`}>
+        {lineItems.length === 0
+          ? <Typography variant="body2" color="text.secondary">None in Lumina.</Typography>
+          : lineItems.map((li, i) => (
+              <LegacyLineItem
+                key={li.lineitemId || i}
+                item={li}
+                defaultOpen={lineItems.length <= 2}
+                show={lineItemShow}
+              />
+            ))}
+      </Section>
     </Box>
   );
 }
