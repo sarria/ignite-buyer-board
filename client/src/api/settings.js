@@ -1,8 +1,9 @@
 import api from './client';
 
-// The Lumina field selection is read on every card open, so cache it for the tab
-// (same idea as boardCache). Saving/resetting refreshes the cache in place, so an
-// admin sees their change immediately without a reload.
+// Which Lumina fields are HIDDEN (see server/controllers/settings.js for why it's
+// a hide-list). Read on every card open, so cache it for the tab (same idea as
+// boardCache). Saving/resetting refreshes the cache in place, so an admin sees the
+// change immediately without a reload.
 let cached = null;
 
 export const getLuminaFieldSettings = () => {
@@ -14,8 +15,8 @@ export const getLuminaFieldSettings = () => {
   return cached;
 };
 
-export const saveLuminaFieldSettings = (advertiserFields, lineItemFields) =>
-  api.put('/settings/lumina-fields', { advertiserFields, lineItemFields })
+export const saveLuminaFieldSettings = (hiddenAdvertiserFields, hiddenLineItemFields) =>
+  api.put('/settings/lumina-fields', { hiddenAdvertiserFields, hiddenLineItemFields })
     .then(r => { cached = Promise.resolve(r.data); return r.data; });
 
 export const resetLuminaFieldSettings = () =>

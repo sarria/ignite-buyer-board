@@ -138,18 +138,35 @@ const FALLBACK_CATALOG = [
   'status', 'market', 'companyName', 'startDate', 'endDate', 'totalBudget',
   'woOrderNumber', 'woLineItemNumbers', 'lineitemId', 'orderId', 'advertiserId',
 ];
+// Optional fields that only appear on records using them, so sampling misses
+// them (geo targeting in particular varies per line item). Cards still show any
+// field Lumina returns — the setting is a hide-list — but these need to be in the
+// catalog to be *selectable* in the admin picker.
+const KNOWN_OPTIONAL = [
+  'states', 'cities', 'zipcodes', 'counties', 'countries', 'dmas',
+  'geoRadius', 'exclusionDetails', 'monthlyBudget', 'makeGoodBudget',
+  'partnerRetailBudget', 'budgetFlightingDetails', 'goalType', 'objective',
+  'buildReport', 'additionalDetails', 'creativeInstructions',
+];
 const CATALOG_TTL_MS = 60 * 60 * 1000;
 let catalogCache = { at: 0, keys: null, promise: null };
+
+// Sample several line items per product, not one: optional fields (states,
+// zipcodes, creativeInstructions, exclusionDetails…) only appear on records that
+// use them, and a one-record sample silently omits them from the picker.
+const SAMPLES_PER_PRODUCT = 5;
 
 async function sampleCatalog() {
   const keys = new Set();
   for (const product of PRODUCTS) {
     try {
-      const page = await call('/sem/lineitems', { product, limit: 1 });
-      const id = page.items?.[0]?.lineitemId;
-      if (!id) continue;
-      const detail = await call(`/sem/lineitems/${id}`);
-      if (detail.found) Object.keys(detail.lineitem).forEach(k => keys.add(k));
+      const page = await call('/sem/lineitems', { product, limit: SAMPLES_PER_PRODUCT });
+      for (const row of page.items || []) {
+        try {
+          const detail = await call(`/sem/lineitems/${row.lineitemId}`);
+          if (detail.found) Object.keys(detail.lineitem).forEach(k => keys.add(k));
+        } catch { /* skip this record */ }
+      }
     } catch { /* one product failing shouldn't empty the catalog */ }
   }
   return [...keys].sort();
@@ -161,7 +178,9 @@ async function fieldCatalog() {
 
   catalogCache.promise = (async () => {
     const keys = await sampleCatalog();
-    const result = keys.length ? keys : FALLBACK_CATALOG;
+    const result = keys.length
+      ? [...new Set([...keys, ...KNOWN_OPTIONAL])].sort()
+      : FALLBACK_CATALOG;
     catalogCache = { at: Date.now(), keys: result, promise: null };
     return result;
   })();

@@ -11,7 +11,7 @@ import {
   searchLuminaLineItems, getLuminaLineItem, getLuminaAdvertiser,
 } from '../../api/lumina';
 import { getLuminaFieldSettings } from '../../api/settings';
-import { luminaFieldFilter } from '../../utils/luminaFields';
+
 import LuminaSnapshot from './LuminaSnapshot';
 
 // A card links to a Lumina LINE ITEM — that's the unit buyers work on and what
@@ -95,14 +95,14 @@ export default function LuminaPanel({ lumina, readOnly, onChange }) {
   const [open, setOpen] = useState(true);
   const [fieldSettings, setFieldSettings] = useState(null);
 
-  // Which fields to show (admin setting). Cached per tab, so this is a network
-  // call once and then free on every later card open. A failure here must not
-  // hide the data — we fall back to showing everything.
+  // Which fields the admin HID. Cached per tab, so this is one network call and
+  // then free on every later card open. A failure here must not hide data — an
+  // empty setting means show everything.
   useEffect(() => {
     let cancelled = false;
     getLuminaFieldSettings()
       .then(s => { if (!cancelled) setFieldSettings(s); })
-      .catch(() => { if (!cancelled) setFieldSettings({ advertiserFields: null, lineItemFields: null }); });
+      .catch(() => { if (!cancelled) setFieldSettings({}); });
     return () => { cancelled = true; };
   }, []);
 
@@ -227,8 +227,8 @@ export default function LuminaPanel({ lumina, readOnly, onChange }) {
           {!error && snap && (
             <LuminaSnapshot
               snap={snap}
-              advertiserShow={luminaFieldFilter(fieldSettings?.advertiserFields)}
-              lineItemShow={luminaFieldFilter(fieldSettings?.lineItemFields)}
+              advertiserHide={new Set(fieldSettings?.hiddenAdvertiserFields || [])}
+              lineItemHide={new Set(fieldSettings?.hiddenLineItemFields || [])}
             />
           )}
         </Box>

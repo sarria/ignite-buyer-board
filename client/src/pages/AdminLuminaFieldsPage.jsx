@@ -94,12 +94,16 @@ export default function AdminLuminaFieldsPage() {
   const [error, setError] = useState(null);
   const [toast, setToast] = useState('');
 
+  // The server stores HIDDEN keys; the checkboxes show what's visible, so we
+  // invert on load and again on save. Anything outside the catalog stays visible
+  // by default — that's the point of storing hidden rather than kept.
   const load = (data) => {
+    const hiddenLi = data.hiddenLineItemFields || [];
+    const hiddenAdv = data.hiddenAdvertiserFields || [];
     setCatalog(data.catalog);
-    setUnset(data.advertiserFields == null);
-    // Unconfigured → pre-check everything, so the picker reflects what cards show now.
-    setAdv(data.advertiserFields ?? data.catalog.advertiser);
-    setLi(data.lineItemFields ?? data.catalog.lineItem);
+    setUnset(!hiddenLi.length && !hiddenAdv.length);
+    setAdv(data.catalog.advertiser.filter(k => !hiddenAdv.includes(k)));
+    setLi(data.catalog.lineItem.filter(k => !hiddenLi.includes(k)));
   };
 
   useEffect(() => {
@@ -113,7 +117,10 @@ export default function AdminLuminaFieldsPage() {
     setSaving(true);
     setError(null);
     try {
-      load(await saveLuminaFieldSettings(adv, li));
+      load(await saveLuminaFieldSettings(
+        catalog.advertiser.filter(k => !adv.includes(k)),
+        catalog.lineItem.filter(k => !li.includes(k)),
+      ));
       setToast('Saved — every card will show these fields.');
     } catch {
       setError('Could not save. Admin access is required.');
@@ -154,7 +161,7 @@ export default function AdminLuminaFieldsPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Choose what the Lumina panel shows on a card. Applies to every board and
           everyone, and takes effect the next time a card is opened.
-          {unset && ' Nothing is saved yet, so cards currently show every field.'}
+          {unset && ' Nothing is hidden yet, so cards show every field Lumina returns.'}
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -162,7 +169,7 @@ export default function AdminLuminaFieldsPage() {
         <FieldGroup
           title="Line item"
           count={`${li.length}/${catalog.lineItem.length} selected`}
-          hint="Grouped the same way Lumina's own line-item page is, and shown on the card in this order. Deselect a whole group to hide its heading."
+          hint="Grouped and ordered the same way Lumina's own line-item page is. Unticking hides a field; a field Lumina adds later shows up automatically."
           onAll={() => setLi(catalog.lineItem)}
           onNone={() => setLi([])}
         >

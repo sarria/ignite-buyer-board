@@ -483,27 +483,48 @@ real campaigns with it.
   Lumina fields appear with no code change. All 83 catalog keys are currently placed
   (Other is empty); when Lumina adds fields, place them rather than leaving them there.
 - **`utils/luminaFields.js`** - labels + value formatting, shared by the panel and the
-  admin picker so they can't drift. Handles the shapes Lumina actually returns: people
-  are objects (`{username, fullName, accountName}` -> show `fullName`), `*Budget` keys
-  render as currency, `*Date` keys as dates, arrays join, and nested objects
-  (`buildDetails`) expand into indented sub-rows instead of raw JSON. `LUMINA_HIDDEN`
-  drops audit trails (`statusHistory`, `stepHistory`), upload blobs, and the raw
-  `*Username` keys we render via `*UsernameDisplay`.
+  admin picker so they can't drift. **Labels copy Lumina's own wording** ("Do you need to
+  add a radius?", "Use their Google Ads account?") so buyers read the same thing in both
+  places. Handles the shapes Lumina actually returns: people are objects
+  (`{username, fullName, accountName}` -> show `fullName`), `*Budget` keys render as
+  currency, `*Date` keys as zero-padded MM/DD/YYYY, strings are trimmed (some values
+  carry leading spaces), arrays join, `tactics` (keyed by tactic -> `{campaignName}`)
+  flattens to the campaign-name list Lumina shows, and nested objects (`buildDetails`)
+  expand into indented sub-rows instead of raw JSON. Values containing URLs become
+  links; values that are HTML (`creativeInstructions`, `additionalDetails`) render
+  through `RichContent` rather than printing tags.
+  `LUMINA_HIDDEN` drops audit trails (`statusHistory`, `stepHistory`), upload fields
+  (bare ObjectIds with no download URL — Lumina's page shows "(Uploaded: date)" + a link;
+  matching that needs a file URL from them), the raw `*Username` keys we render via
+  `*UsernameDisplay`, and exact duplicates (`campaignType`==`type`,
+  `workflowStepName`==`status`, `advertiserName`==`companyName`,
+  `tacticDetails`==`tactics`).
+- **Blank values are omitted, not printed as an empty row** — Lumina's page does the
+  same. `false` and `0` are values and still render.
 - **Which fields show is a GLOBAL admin setting**: `/admin/lumina-fields`
   (`AdminLuminaFieldsPage`, sidebar -> "Lumina fields"), stored in
   `app_settings._id='luminaFields'`. Applies to every board and user, effective on the
-  next card open. **No saved doc = show everything** (so fields Lumina adds appear by
-  default); `null` = unset/show-all and `[]` = deliberately hide that group - they are
-  NOT the same. The **line-item catalog is discovered**, not hardcoded: the server
-  samples one line item per product and unions their keys (cached 1h, with a fallback
-  list if Lumina is unreachable), because the document varies by product. Selections are
-  filtered through the catalog on save, so display order is catalog order and unknown
-  keys are dropped. Read path is cached per tab in `api/settings.js` - one request, not
-  one per card open; a failure falls back to showing everything rather than hiding data.
-- **Pre-rename selections self-heal.** Any selection saved before 2026-07-27 is treated
-  as unset. Filtering it key-by-key would be worse than useless: `market`, `product` and
-  `subProduct` survived the rename, so "all 13 old fields" would silently collapse to
-  "these 3". Keep that date check until no such docs can exist.
+  next card open. Read path is cached per tab in `api/settings.js` - one request, not one
+  per card open; a failure falls back to showing everything rather than hiding data.
+- **The setting stores what is HIDDEN, not what is kept** (`hiddenLineItemFields` /
+  `hiddenAdvertiserFields`). This is load-bearing, not a style choice: the line item is a
+  document whose field set varies per record, and the picker's catalog is only a sample,
+  so with an allow-list any field the sample missed (`states`, `zipcodes`,
+  `creativeInstructions`) could never be ticked and therefore vanished from every card.
+  A hide-list means unknown and newly-added fields show by default. **Don't invert it
+  back.** Hidden keys are stored unfiltered — filtering them through the catalog would
+  un-hide exactly the fields sampling missed.
+- **The catalog is discovered + a known-optional list.** The server samples 5 line items
+  per product and unions their keys (cached 1h; falls back to a static list if Lumina is
+  unreachable), then unions `KNOWN_OPTIONAL` for fields that only appear on records that
+  use them (geo targeting especially). Sampling alone can never be complete — that's
+  fine for display (hide-list), it only affects what's *selectable* in the picker.
+- **Old selections are NOT migrated.** Anything saved before 2026-07-27 (the rename) or
+  in the old allow-list shape reads as "show everything" and the admin re-picks once.
+  Both plausible migrations are actively harmful: filtering a pre-rename list key-by-key
+  collapses "all 13 old fields" to the 3 whose names survived (`market`, `product`,
+  `subProduct`), and converting an allow-list via "hidden = catalog - kept" hides every
+  field the old catalog never offered.
 - **Gotcha:** the real channel is `subProduct` (Bing appears as `["Bing Search"]`), and
   it's an array.
 
@@ -632,7 +653,9 @@ All route handlers try/catch → central error middleware; error shape
 - **Lumina phase 2:** show the linked line item on the board card, filter a board by
   advertiser, and curate the default field selection once buyers say which of the ~75
   fields they actually use. Still missing from the API: the **budget flighting rows**
-  table. Open question for Lumina: the form's "Buyer" showed a different name than
+  table (only an upload id comes back), and **file URLs** for build report / creative /
+  flighting uploads. Also worth querying: `contractedBudget` came back as the full
+  amount on a record where Lumina's own page showed `$0`. Open question for Lumina: the form's "Buyer" showed a different name than
   `buyerSearchUsernameDisplay` on one spot-check — but every other buyer role on that
   record is null, so the screenshot was most likely stale.
 - **Import Asana task templates** (templates are not exported/seeded yet).

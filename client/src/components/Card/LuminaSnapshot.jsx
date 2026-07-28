@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Box, Typography, Divider, Collapse } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Link } from '@mui/material';
 import {
   luminaLabel as label, formatLuminaValue, LUMINA_HIDDEN, groupLuminaFields,
+  looksLikeHtml,
 } from '../../utils/luminaFields';
+import RichContent from '../common/RichContent';
 
 // Renders a Lumina line item in Lumina's own visual language: grouped sections
 // with a colored header + rule, and bold-label / value rows.
@@ -11,11 +14,48 @@ import {
 // The detail payload is a DOCUMENT whose field set varies by product, so the
 // sections below are a display order, not a schema: any key we don't place lands
 // in "Other", and anything Lumina adds later shows up with no code change.
-// Which fields appear at all is the admin setting (/admin/lumina-fields), passed
-// in as a Set; null means unconfigured → show everything.
+// The admin setting (/admin/lumina-fields) passes a Set of keys to HIDE — not to
+// show. That way a field Lumina returns but our catalog sample never saw (states,
+// zipcodes, creativeInstructions…) still appears instead of silently vanishing.
 
-const shown = (data, keys, show) =>
-  keys.filter(k => k in data && !LUMINA_HIDDEN.has(k) && (!show || show.has(k)));
+// Lumina's own page omits a field it has no value for (an unfilled team role, an
+// unused geo option) rather than printing a blank row — so do we. `false` and 0
+// are values, not blanks, and still render.
+const isBlank = v =>
+  v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)
+  || (typeof v === 'string' && !v.trim());
+
+const shown = (data, keys, hide) =>
+  keys.filter(k => k in data && !LUMINA_HIDDEN.has(k)
+    && !(hide && hide.has(k)) && !isBlank(data[k]));
+
+// Values often carry URLs (advertiser site, landing page, keyword notes) and real
+// line breaks. Lumina renders those as links / multi-line text, so we do too.
+const URL_SPLIT = /(https?:\/\/[^\s]+)/g;
+const IS_URL = /^https?:\/\//;
+
+function Text({ children }) {
+  if (typeof children !== 'string') return children;
+  // Rich text from the order form — render it (sanitized, links open in a new tab)
+  // rather than showing the markup.
+  if (looksLikeHtml(children)) return <RichContent html={children} sx={{ '& p': { m: 0 } }} />;
+  return (
+    <Box component="span" sx={{ whiteSpace: 'pre-line' }}>
+      {children.split(URL_SPLIT).map((part, i) => (IS_URL.test(part) ? (
+        <Link
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          sx={{ wordBreak: 'break-all' }}
+        >
+          {part}
+        </Link>
+      ) : part))}
+    </Box>
+  );
+}
 
 function Row({ label: text, children }) {
   return (
@@ -38,8 +78,8 @@ function NestedValue({ value }) {
       {entries.map(([k, v]) => (
         <Box key={k} sx={{ display: 'contents' }}>
           <Typography variant="caption" color="text.secondary">{label(k)}</Typography>
-          <Typography variant="caption" sx={{ wordBreak: 'break-word' }}>
-            {formatLuminaValue(k, v) ?? JSON.stringify(v)}
+          <Typography variant="caption" component="div" sx={{ wordBreak: 'break-word' }}>
+            <Text>{formatLuminaValue(k, v) ?? JSON.stringify(v)}</Text>
           </Typography>
         </Box>
       ))}
@@ -62,7 +102,7 @@ function Rows({ data, keys }) {
         return (
           <Row key={k} label={label(k)}>
             {formatted !== null
-              ? formatted
+              ? <Text>{formatted}</Text>
               : <NestedValue value={data[k]} />}
           </Row>
         );
@@ -81,16 +121,16 @@ function Section({ title, children }) {
   );
 }
 
-function Document({ data, show }) {
+function Document({ data, hide }) {
   // Same grouping the admin picker uses, so what you tick is where it appears.
   const groups = groupLuminaFields(Object.keys(data))
-    .map(([title, keys]) => [title, shown(data, keys, show)])
+    .map(([title, keys]) => [title, shown(data, keys, hide)])
     .filter(([, keys]) => keys.length);
 
   if (!groups.length) {
     return (
       <Typography variant="body2" color="text.secondary">
-        No fields selected — see Lumina fields in the sidebar.
+        Every field is hidden — see Lumina fields in the sidebar.
       </Typography>
     );
   }
@@ -101,7 +141,7 @@ function Document({ data, show }) {
 
 // Legacy shape: a card linked to an advertiser rather than a line item shows the
 // advertiser plus a collapsible per line item.
-function LegacyLineItem({ item, defaultOpen, show }) {
+function LegacyLineItem({ item, defaultOpen, hide }) {
   const [open, setOpen] = useState(defaultOpen);
   const title = item.campaignName || item.displayName || item.lineitemId;
   const sub = [item.product, item.status, item.market].filter(Boolean).join(' · ');
@@ -124,24 +164,24 @@ function LegacyLineItem({ item, defaultOpen, show }) {
         />
       </Box>
       <Collapse in={open} unmountOnExit>
-        <Box sx={{ px: 1.25, pb: 1 }}><Document data={item} show={show} /></Box>
+        <Box sx={{ px: 1.25, pb: 1 }}><Document data={item} hide={hide} /></Box>
       </Collapse>
     </Box>
   );
 }
 
-export default function LuminaSnapshot({ snap, advertiserShow = null, lineItemShow = null }) {
+export default function LuminaSnapshot({ snap, advertiserHide = null, lineItemHide = null }) {
   const { lineItem = null, advertiser = null } = snap;
   const lineItems = snap.lineItems || [];
 
   // Normal case: the card is linked to one line item — show its document.
-  if (lineItem) return <Box><Document data={lineItem} show={lineItemShow} /></Box>;
+  if (lineItem) return <Box><Document data={lineItem} hide={lineItemHide} /></Box>;
 
   return (
     <Box>
       {advertiser && (
         <Section title="Advertiser">
-          <Rows data={advertiser} keys={shown(advertiser, Object.keys(advertiser), advertiserShow)} />
+          <Rows data={advertiser} keys={shown(advertiser, Object.keys(advertiser), advertiserHide)} />
         </Section>
       )}
       <Section title={`Line Items (${lineItems.length})`}>
@@ -152,7 +192,7 @@ export default function LuminaSnapshot({ snap, advertiserShow = null, lineItemSh
                 key={li.lineitemId || i}
                 item={li}
                 defaultOpen={lineItems.length <= 2}
-                show={lineItemShow}
+                hide={lineItemHide}
               />
             ))}
       </Section>
