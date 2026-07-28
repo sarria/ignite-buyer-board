@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Box, Typography, Divider, Collapse } from '@mui/material';
+import { Box, Typography, Divider, Collapse, Link } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { Link } from '@mui/material';
 import {
   luminaLabel as label, formatLuminaValue, LUMINA_HIDDEN, groupLuminaFields,
   looksLikeHtml,
@@ -61,52 +60,71 @@ function Row({ label: text, children }) {
   return (
     <Box sx={{ display: 'contents' }}>
       <Typography variant="body2" fontWeight={700}>{text}</Typography>
-      <Typography variant="body2" color="text.secondary" component="div" sx={{ wordBreak: 'break-word' }}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        component="div"
+        sx={{ overflowWrap: 'anywhere' }}
+      >
         {children}
       </Typography>
     </Box>
   );
 }
 
-// A nested object (e.g. buildDetails) renders as an indented mini-list instead of
-// raw JSON — Lumina's own form shows these as sub-fields.
-function NestedValue({ value }) {
-  const entries = Object.entries(value).filter(([k]) => !LUMINA_HIDDEN.has(k));
-  if (!entries.length) return '—';
+// A sub-heading that spans both grid columns (used when a nested object needs a
+// name of its own).
+function SubHeading({ children }) {
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: 1.5, rowGap: 0.25 }}>
-      {entries.map(([k, v]) => (
-        <Box key={k} sx={{ display: 'contents' }}>
-          <Typography variant="caption" color="text.secondary">{label(k)}</Typography>
-          <Typography variant="caption" component="div" sx={{ wordBreak: 'break-word' }}>
-            <Text>{formatLuminaValue(k, v) ?? JSON.stringify(v)}</Text>
-          </Typography>
-        </Box>
-      ))}
-    </Box>
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ gridColumn: '1 / -1', mt: 0.5, fontWeight: 700 }}
+    >
+      {children}
+    </Typography>
   );
 }
 
-function Rows({ data, keys }) {
+// Nested objects (buildDetails) are FLATTENED into the parent grid rather than
+// rendered inside the value column. Nesting a second two-column grid inside a
+// ~150px cell squeezed values to one character per line — and Lumina doesn't nest
+// them either: its Build Details section lists the sub-fields as ordinary rows.
+function Rows({ data, keys, sectionTitle }) {
   if (!keys.length) return null;
+
+  const cells = [];
+  for (const k of keys) {
+    const formatted = formatLuminaValue(k, data[k]);
+    if (formatted !== null) {
+      cells.push(<Row key={k} label={label(k)}><Text>{formatted}</Text></Row>);
+      continue;
+    }
+    // Nested object → optional sub-heading, then its entries as normal rows.
+    // Skip the heading when it would just repeat the section title.
+    const entries = Object.entries(data[k] || {}).filter(([sk]) => !LUMINA_HIDDEN.has(sk));
+    if (!entries.length) continue;
+    if (label(k) !== sectionTitle) cells.push(<SubHeading key={`${k}-h`}>{label(k)}</SubHeading>);
+    for (const [sk, sv] of entries) {
+      cells.push(
+        <Row key={`${k}.${sk}`} label={label(sk)}>
+          <Text>{formatLuminaValue(sk, sv) ?? JSON.stringify(sv)}</Text>
+        </Row>
+      );
+    }
+  }
+
   return (
     <Box
       sx={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(110px, 38%) 1fr',
+        // Labels here can be full questions ("Services the client offers…"), so give
+        // the value column a floor — a percentage-only split starves it.
+        gridTemplateColumns: 'minmax(120px, 0.9fr) minmax(140px, 1.1fr)',
         columnGap: 2, rowGap: 0.75, mb: 2,
       }}
     >
-      {keys.map(k => {
-        const formatted = formatLuminaValue(k, data[k]);
-        return (
-          <Row key={k} label={label(k)}>
-            {formatted !== null
-              ? <Text>{formatted}</Text>
-              : <NestedValue value={data[k]} />}
-          </Row>
-        );
-      })}
+      {cells}
     </Box>
   );
 }
@@ -135,7 +153,9 @@ function Document({ data, hide }) {
     );
   }
   return groups.map(([title, keys]) => (
-    <Section key={title} title={title}><Rows data={data} keys={keys} /></Section>
+    <Section key={title} title={title}>
+      <Rows data={data} keys={keys} sectionTitle={title} />
+    </Section>
   ));
 }
 
