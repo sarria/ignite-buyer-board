@@ -474,12 +474,14 @@ real campaigns with it.
   Casper"), an **Open in Lumina** button, refresh + detach. The fetch is **never awaited
   by the drawer** - the rest of the card is on screen immediately. Read-only on
   archived/completed cards.
-- **`components/Card/LuminaSnapshot.jsx`** - presentation, styled after Lumina's own
-  line-item page: sections (Product / Ignite Team / Campaign / Budget / Geo Targeting /
-  Google / Build Details / Advertiser & Order / Identifiers) with a colored header + rule
-  and bold-label / value rows. **The sections are a display ORDER, not a schema** - the
-  payload is a document whose field set varies by product, so unplaced keys land in
-  "Other" and new Lumina fields appear with no code change.
+- **Sections mirror Lumina's own line-item page** (Product, Campaign, Ignite Team,
+  Platform, Build Report, Google, Budget, Geo Targeting, Build Details, Additional, plus
+  our Advertiser & Order + Identifiers). `LUMINA_SECTIONS` in `utils/luminaFields.js` is
+  the single source, used by BOTH `LuminaSnapshot` and the admin picker, so what you tick
+  is grouped where it appears. **It is a display ORDER, not a schema** - the payload is a
+  document whose field set varies by product, so unplaced keys land in "Other" and new
+  Lumina fields appear with no code change. All 83 catalog keys are currently placed
+  (Other is empty); when Lumina adds fields, place them rather than leaving them there.
 - **`utils/luminaFields.js`** - labels + value formatting, shared by the panel and the
   admin picker so they can't drift. Handles the shapes Lumina actually returns: people
   are objects (`{username, fullName, accountName}` -> show `fullName`), `*Budget` keys
@@ -631,7 +633,8 @@ All route handlers try/catch → central error middleware; error shape
   advertiser, and curate the default field selection once buyers say which of the ~75
   fields they actually use. Still missing from the API: the **budget flighting rows**
   table. Open question for Lumina: the form's "Buyer" showed a different name than
-  `buyerSearchUsernameDisplay` on one spot-check — confirm which field it maps to.
+  `buyerSearchUsernameDisplay` on one spot-check — but every other buyer role on that
+  record is null, so the screenshot was most likely stale.
 - **Import Asana task templates** (templates are not exported/seeded yet).
 - **Private S3 bucket** via presigned/CloudFront (currently public).
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Box, Typography, Divider, Collapse } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
-  luminaLabel as label, formatLuminaValue, LUMINA_HIDDEN,
+  luminaLabel as label, formatLuminaValue, LUMINA_HIDDEN, groupLuminaFields,
 } from '../../utils/luminaFields';
 
 // Renders a Lumina line item in Lumina's own visual language: grouped sections
@@ -13,25 +13,6 @@ import {
 // in "Other", and anything Lumina adds later shows up with no code change.
 // Which fields appear at all is the admin setting (/admin/lumina-fields), passed
 // in as a Set; null means unconfigured → show everything.
-
-const SECTIONS = [
-  ['Product', ['product', 'subProduct', 'displayName', 'platforms', 'kpi', 'goalType', 'objective']],
-  ['Ignite Team', ['aeUsernameDisplay', 'dslUsernameDisplay', 'dcmUsernameDisplay', 'buyerSearchUsernameDisplay']],
-  ['Campaign', ['campaignName', 'campaignInitiative', 'type', 'campaignType', 'status',
-    'workflowStepName', 'startDate', 'endDate', 'market', 'woOrderNumber',
-    'woLineItemNumbers', 'sensitiveCatCampaign']],
-  ['Budget', ['contractedBudget', 'totalBudget', 'adjustedTotalBudget', 'monthlyBudget',
-    'includeMakeGood', 'includeRateException']],
-  ['Geo Targeting', ['geoTargetingType', 'states', 'cities', 'zipcodes', 'needRadius',
-    'isExclusion', 'exclusionDetails']],
-  ['Google', ['gtmAccount', 'gtmContainerId', 'gaEmail', 'gaId', 'googleAdsAcc',
-    'linkToGBP', 'linkedGBP', 'emailGBP', 'trackCallComplGBP']],
-  ['Build Details', ['buildDetails', 'buildReport', 'additionalDetails']],
-  ['Advertiser & Order', ['companyName', 'advertiserName', 'companySlug', 'advertiserRegion',
-    'orderName', 'orderStartDate', 'orderEndDate', 'createdDate']],
-  ['Identifiers', ['lineitemId', 'orderId', 'advertiserId', 'tapLineitemId']],
-];
-const PLACED = new Set(SECTIONS.flatMap(([, keys]) => keys));
 
 const shown = (data, keys, show) =>
   keys.filter(k => k in data && !LUMINA_HIDDEN.has(k) && (!show || show.has(k)));
@@ -101,8 +82,8 @@ function Section({ title, children }) {
 }
 
 function Document({ data, show }) {
-  const other = Object.keys(data).filter(k => !PLACED.has(k));
-  const groups = [...SECTIONS, ['Other', other]]
+  // Same grouping the admin picker uses, so what you tick is where it appears.
+  const groups = groupLuminaFields(Object.keys(data))
     .map(([title, keys]) => [title, shown(data, keys, show)])
     .filter(([, keys]) => keys.length);
 

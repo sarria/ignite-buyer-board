@@ -15,6 +15,10 @@ export const LUMINA_LABELS = {
   // product
   product: 'Product', subProduct: 'Sub Product', displayName: 'Display Name',
   platforms: 'Platforms', kpi: 'KPI', goalType: 'Goal Type', objective: 'Objective',
+  // Lumina's Product section shows this free-text row right under KPI when the KPI
+  // is "Other" (e.g. "Site Traffic / Landing Page Views").
+  other: 'Other (KPI detail)',
+  tactics: 'Tactic', tacticDetails: 'Tactic Details', tacticTypeSpecial: 'Tactic Type (Special)',
   // dates
   startDate: 'Start Date', endDate: 'End Date',
   orderStartDate: 'Order Start Date', orderEndDate: 'Order End Date',
@@ -24,10 +28,12 @@ export const LUMINA_LABELS = {
   contractedBudget: 'Contracted Budget', monthlyBudget: 'Monthly Budget',
   includeMakeGood: 'Include Make Good / Added Value',
   includeRateException: 'Include Rate Exception',
+  makeGoodBudget: 'Make Good Budget', partnerRetailBudget: 'Partner Retail Budget',
+  budgetFlightingDetails: 'Budget Flighting',
   // targeting
   geoTargetingType: 'Geo Targeting Type', states: 'States', cities: 'Cities',
   zipcodes: 'Zip Codes', isExclusion: 'Exclusion', exclusionDetails: 'Exclusion Details',
-  needRadius: 'Radius Needed',
+  needRadius: 'Radius Needed', geoRadius: 'Radius',
   // google
   gtmAccount: 'GTM Email Address', gtmContainerId: 'GTM Container ID',
   gaEmail: 'GA Email', gaId: 'GA ID', googleAdsAcc: 'Google Ads Account',
@@ -36,12 +42,20 @@ export const LUMINA_LABELS = {
   // team — Lumina's own UI labels these AE / DSM / DCM / Buyer
   aeUsernameDisplay: 'AE', dslUsernameDisplay: 'DSM',
   dcmUsernameDisplay: 'DCM', buyerSearchUsernameDisplay: 'Buyer',
+  buyerProgrammaticUsernameDisplay: 'Buyer (Programmatic)',
+  buyerSocialUsernameDisplay: 'Buyer (Social)',
+  creativeDirectorUsernameDisplay: 'Creative Director', designerUsernameDisplay: 'Designer',
+  contentProducerUsernameDisplay: 'Content Producer',
+  contestProducerUsernameDisplay: 'Contest Producer',
   // advertiser / order
   companyName: 'Advertiser', advertiserName: 'Advertiser Name',
   companySlug: 'Slug', orderName: 'Order Name', advertiserRegion: 'Region',
   markets: 'Markets', reportingStatus: 'Reporting Status',
   advertiserGroupSlugs: 'Advertiser Groups',
   buildDetails: 'Build Details', buildReport: 'Build Report',
+  uploadBuildReport: 'Build Report Upload',
+  housingEmplCredit: 'Housing / Employment / Credit',
+  recruitmentCampaign: 'Recruitment Campaign',
   additionalDetails: 'Additional Details',
 };
 
@@ -84,6 +98,56 @@ export function formatLuminaValue(key, v) {
   if (isMoneyKey(key) && typeof v === 'number') return money(v);
   if (isDateKey(key)) return day(v);
   return String(v);
+}
+
+// Section order mirrors the left-hand nav on Lumina's own line-item page (Product,
+// Campaign, Ignite Team, Platform, Build Report, Google, Budget, Geo Targeting,
+// Build Details, Additional), with two of ours at the end for the ids and parent
+// records the form doesn't show. Used by BOTH the card panel and the admin picker,
+// so they always group the same way.
+//
+// This is a display ORDER, not a schema — the payload is a document whose field set
+// varies by product. Anything not listed here lands in "Other", so fields Lumina
+// adds later still appear.
+export const LUMINA_SECTIONS = [
+  ['Product', ['product', 'subProduct', 'displayName', 'tactics', 'tacticDetails',
+    'tacticTypeSpecial', 'objective', 'kpi', 'goalType', 'other']],
+  ['Campaign', ['campaignName', 'campaignInitiative', 'type', 'campaignType', 'status',
+    'workflowStepName', 'startDate', 'endDate', 'market', 'woOrderNumber',
+    'woLineItemNumbers', 'sensitiveCatCampaign', 'housingEmplCredit',
+    'recruitmentCampaign']],
+  ['Ignite Team', ['aeUsernameDisplay', 'dslUsernameDisplay', 'dcmUsernameDisplay',
+    'buyerSearchUsernameDisplay', 'buyerProgrammaticUsernameDisplay',
+    'buyerSocialUsernameDisplay', 'creativeDirectorUsernameDisplay',
+    'designerUsernameDisplay', 'contentProducerUsernameDisplay',
+    'contestProducerUsernameDisplay']],
+  ['Platform', ['platforms', 'googleAdsAcc']],
+  ['Build Report', ['buildReport', 'uploadBuildReport']],
+  ['Google', ['gtmAccount', 'gtmContainerId', 'gaEmail', 'gaId',
+    'linkToGBP', 'linkedGBP', 'emailGBP', 'trackCallComplGBP']],
+  ['Budget', ['contractedBudget', 'totalBudget', 'adjustedTotalBudget', 'monthlyBudget',
+    'includeMakeGood', 'makeGoodBudget', 'partnerRetailBudget',
+    'includeRateException', 'budgetFlightingDetails']],
+  ['Geo Targeting', ['geoTargetingType', 'states', 'cities', 'zipcodes', 'needRadius',
+    'geoRadius', 'isExclusion', 'exclusionDetails']],
+  ['Build Details', ['buildDetails']],
+  ['Additional', ['additionalDetails', 'revisionInstructions', 'revisionConfirmationSummary']],
+  ['Advertiser & Order', ['companyName', 'advertiserName', 'companySlug', 'advertiserRegion',
+    'orderName', 'orderStartDate', 'orderEndDate', 'createdDate']],
+  ['Identifiers', ['lineitemId', 'orderId', 'advertiserId', 'tapLineitemId']],
+];
+
+const PLACED = new Set(LUMINA_SECTIONS.flatMap(([, keys]) => keys));
+
+// Group an arbitrary key list into the sections above, dropping hidden keys and
+// empty sections. Unplaced keys collect in "Other" so nothing is silently lost.
+export function groupLuminaFields(keys) {
+  const available = new Set(keys.filter(k => !LUMINA_HIDDEN.has(k)));
+  const groups = LUMINA_SECTIONS
+    .map(([title, sectionKeys]) => [title, sectionKeys.filter(k => available.has(k))])
+    .filter(([, ks]) => ks.length);
+  const other = [...available].filter(k => !PLACED.has(k)).sort();
+  return other.length ? [...groups, ['Other', other]] : groups;
 }
 
 // Sparse fields, flagged in the picker so admins know a row may look blank.

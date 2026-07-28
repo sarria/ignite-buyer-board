@@ -8,40 +8,74 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import {
   getLuminaFieldSettings, saveLuminaFieldSettings, resetLuminaFieldSettings,
 } from '../api/settings';
-import { luminaLabel, LUMINA_SPARSE } from '../utils/luminaFields';
+import { luminaLabel, LUMINA_SPARSE, groupLuminaFields } from '../utils/luminaFields';
 
 // Global (app-wide) picker for which Lumina fields the card panel shows. Applies
 // to every board and every user — the point is that buyers tune this themselves
 // instead of us guessing which of Lumina's fields matter.
 
-function FieldGroup({ title, hint, catalog, selected, onToggle, onAll, onNone }) {
+function Checkboxes({ keys, selected, onToggle }) {
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.25 }}>
+      {keys.map(k => (
+        <FormControlLabel
+          key={k}
+          control={<Checkbox size="small" checked={selected.includes(k)} onChange={() => onToggle(k)} />}
+          label={
+            <Box>
+              <Typography variant="body2">{luminaLabel(k)}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {k}{LUMINA_SPARSE[k] ? ` · ${LUMINA_SPARSE[k]}` : ''}
+              </Typography>
+            </Box>
+          }
+        />
+      ))}
+    </Box>
+  );
+}
+
+// Sub-section header with its own All/None — the groups mirror Lumina's own
+// line-item page (Product, Campaign, Ignite Team, …) and match the order the
+// fields appear in on the card, so ticking here is predictable.
+function SubSection({ title, keys, selected, setSelected, onToggle }) {
+  const allOn = keys.every(k => selected.includes(k));
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="subtitle2" color="primary">{title}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {keys.filter(k => selected.includes(k)).length}/{keys.length}
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        <Button
+          size="small"
+          onClick={() => setSelected(prev => (allOn
+            ? prev.filter(k => !keys.includes(k))
+            : [...new Set([...prev, ...keys])]))}
+        >
+          {allOn ? 'None' : 'All'}
+        </Button>
+      </Box>
+      <Divider sx={{ mb: 1 }} />
+      <Checkboxes keys={keys} selected={selected} onToggle={onToggle} />
+    </Box>
+  );
+}
+
+function FieldGroup({ title, hint, children, onAll, onNone, count }) {
   return (
     <Box sx={{ mb: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
         <Typography variant="h6">{title}</Typography>
+        {count && <Typography variant="caption" color="text.secondary">{count}</Typography>}
         <Box sx={{ flex: 1 }} />
         <Button size="small" onClick={onAll}>All</Button>
         <Button size="small" onClick={onNone}>None</Button>
       </Box>
       <Typography variant="caption" color="text.secondary">{hint}</Typography>
       <Divider sx={{ my: 1.5 }} />
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.25 }}>
-        {catalog.map(k => (
-          <Box key={k}>
-            <FormControlLabel
-              control={<Checkbox size="small" checked={selected.includes(k)} onChange={() => onToggle(k)} />}
-              label={
-                <Box>
-                  <Typography variant="body2">{luminaLabel(k)}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {k}{LUMINA_SPARSE[k] ? ` · often ${LUMINA_SPARSE[k]}` : ''}
-                  </Typography>
-                </Box>
-              }
-            />
-          </Box>
-        ))}
-      </Box>
+      {children}
     </Box>
   );
 }
@@ -122,24 +156,33 @@ export default function AdminLuminaFieldsPage() {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <FieldGroup
-          title="Advertiser"
-          hint="Shown once at the top of the panel, plus in each platform account block."
-          catalog={catalog.advertiser}
-          selected={adv}
-          onToggle={toggle(setAdv)}
-          onAll={() => setAdv(catalog.advertiser)}
-          onNone={() => setAdv([])}
-        />
-
-        <FieldGroup
-          title="Line items"
-          hint="Shown inside each line item. Deselecting every field in a group hides that group."
-          catalog={catalog.lineItem}
-          selected={li}
-          onToggle={toggle(setLi)}
+          title="Line item"
+          count={`${li.length}/${catalog.lineItem.length} selected`}
+          hint="Grouped the same way Lumina's own line-item page is, and shown on the card in this order. Deselect a whole group to hide its heading."
           onAll={() => setLi(catalog.lineItem)}
           onNone={() => setLi([])}
-        />
+        >
+          {groupLuminaFields(catalog.lineItem).map(([title, keys]) => (
+            <SubSection
+              key={title}
+              title={title}
+              keys={keys}
+              selected={li}
+              setSelected={setLi}
+              onToggle={toggle(setLi)}
+            />
+          ))}
+        </FieldGroup>
+
+        <FieldGroup
+          title="Advertiser"
+          count={`${adv.length}/${catalog.advertiser.length} selected`}
+          hint="Only used by cards still linked to an advertiser instead of a line item."
+          onAll={() => setAdv(catalog.advertiser)}
+          onNone={() => setAdv([])}
+        >
+          <Checkboxes keys={catalog.advertiser} selected={adv} onToggle={toggle(setAdv)} />
+        </FieldGroup>
 
         <Divider sx={{ mb: 2 }} />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
