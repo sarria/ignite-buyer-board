@@ -21,12 +21,16 @@ function Checkboxes({ keys, selected, onToggle }) {
         <FormControlLabel
           key={k}
           control={<Checkbox size="small" checked={selected.includes(k)} onChange={() => onToggle(k)} />}
+          // Label only — the raw API key is noise for buyers. Kept as a title
+          // attribute so it's still discoverable on hover when debugging.
           label={
-            <Box>
+            <Box title={k}>
               <Typography variant="body2">{luminaLabel(k)}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {k}{LUMINA_SPARSE[k] ? ` · ${LUMINA_SPARSE[k]}` : ''}
-              </Typography>
+              {LUMINA_SPARSE[k] && (
+                <Typography variant="caption" color="text.secondary">
+                  {LUMINA_SPARSE[k]}
+                </Typography>
+              )}
             </Box>
           }
         />
