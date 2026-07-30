@@ -214,6 +214,13 @@ stored in localStorage and sent by the axios request interceptor (`api/client.js
 `ACCESS_PASSWORD` in Vercel for the preview. All the temporary pieces are marked
 `TODO(auth)` / "TEMPORARY".
 
+**Lock (the stand-in for log out).** The sidebar's user area has a lock button →
+`lockApp()` in `api/client.js`: it clears the stored password and hard-navigates to `/`,
+so the gate re-locks AND nothing survives in memory (board cache, open card, cached
+settings) for whoever uses the machine next. A confirm dialog spells out that the
+password is shared, so locking doesn't sign anyone else out. There is no server session
+to end — the password is the whole gate. Becomes a real sign-out with MSAL SSO.
+
 ---
 
 ## Environment Variables

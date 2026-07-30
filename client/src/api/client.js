@@ -10,6 +10,16 @@ const api = axios.create({
 // TEMPORARY access gate: send the shared demo password (if the user has entered
 // one) on every request. Remove when real SSO lands. See AccessGate + auth.js.
 export const ACCESS_PW_KEY = 'accessPassword';
+
+// "Log out" for the shared-password gate: forget the password on THIS browser and
+// reload, so the lock screen comes back and nothing stays in memory (board cache,
+// open card, field settings) for whoever sits down next. There is no server-side
+// session to end — the password is the whole gate. Remove with AccessGate when
+// MSAL SSO lands. TODO(auth).
+export function lockApp() {
+  localStorage.removeItem(ACCESS_PW_KEY);
+  window.location.assign('/');
+}
 api.interceptors.request.use((config) => {
   const pw = localStorage.getItem(ACCESS_PW_KEY);
   if (pw) config.headers['x-access-password'] = pw;

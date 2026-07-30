@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Box, Typography, Tooltip, Avatar, Divider, CircularProgress, IconButton } from '@mui/material';
+import {
+  Box, Typography, Tooltip, Avatar, Divider, CircularProgress, IconButton,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button,
+} from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import TuneIcon from '@mui/icons-material/Tune';
 import HomeIcon from '@mui/icons-material/Home';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { getBoards } from '../../api/boards';
+import { lockApp } from '../../api/client';
 import { userColor } from '../../utils/userColor';
 
 const WIDTH_COLLAPSED = 60;
@@ -26,6 +31,7 @@ export default function Sidebar() {
   const isHome = location.pathname === '/dashboard';
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmLock, setConfirmLock] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
   });
@@ -272,12 +278,53 @@ export default function Sidebar() {
             <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: userColor('Dev User'), flexShrink: 0 }}>D</Avatar>
           </Tooltip>
           {!collapsed && (
-            <Box sx={{ overflow: 'hidden' }}>
-              <Typography variant="body2" noWrap sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Dev User</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Admin</Typography>
-            </Box>
+            <>
+              <Box sx={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" noWrap sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Dev User</Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Admin</Typography>
+              </Box>
+              {/* TEMPORARY: locks the shared-password gate on this browser. Becomes a
+                  real sign-out when MSAL SSO lands. TODO(auth). */}
+              <Tooltip title="Lock — forget the access password on this browser" placement="top">
+                <IconButton
+                  size="small"
+                  onClick={() => setConfirmLock(true)}
+                  sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}
+                >
+                  <LogoutIcon sx={{ fontSize: 17 }} />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
+          {collapsed && (
+            <Tooltip title="Lock" placement="right">
+              <IconButton
+                size="small"
+                onClick={() => setConfirmLock(true)}
+                sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}
+              >
+                <LogoutIcon sx={{ fontSize: 17 }} />
+              </IconButton>
+            </Tooltip>
           )}
         </Box>
+
+        {/* Everyone shares one password, so make it clear what this does — and that
+            they'll need it again to get back in. */}
+        <Dialog open={confirmLock} onClose={() => setConfirmLock(false)}>
+          <DialogTitle>Lock this browser?</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              The access password will be forgotten on this browser and you'll need to
+              enter it again. Everyone shares the same password, so this doesn't sign
+              anyone else out.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmLock(false)}>Cancel</Button>
+            <Button variant="contained" onClick={lockApp}>Lock</Button>
+          </DialogActions>
+        </Dialog>
       </Box>
 
       {/* Drag-to-resize handle (hidden when collapsed) */}
