@@ -455,8 +455,17 @@ real campaigns with it.
   (`LUMINA_API_TOKEN`); the browser only ever calls our `/api/lumina/*`. Paging is
   `limit=100` **sequentially** (Lumina asked for ~100 at a time to go easy on their
   Mongo - never burst in parallel); only the legacy advertiser path pages at all.
-  `searchLineItems` fires `?name=` **plus** an exact `?woOrderNumber=` and merges, so one
-  box handles campaign, advertiser and WO. Detail returns `200 {found:false}` for an
+  `searchLineItems` runs **several upstream filters in parallel and merges** them, so one
+  box handles campaign name, advertiser name, **WO number** (incl. non-numeric ones like
+  `EGL19483` / `TD MORRIS006`), a bare **line-item or advertiser id**, and a **pasted
+  Lumina URL** (the id is extracted from `/lineitem/{seg}/{id}`). `?name=` only covers
+  campaign + company name, hence the extra exact-match queries.
+  **To add a search field:** append to `LINE_ITEM_SEARCHES` in `server/lib/lumina.js`.
+  `param` must be a filter Lumina actually honours (guide §3 — unknown params are
+  ignored silently, so a typo reads as "no results" rather than an error). The list is
+  ordered most-precise-first because results merge in that order, so an exact hit
+  outranks a name match. WO number is also the intended join key for linking imported
+  cards to line items later. Detail returns `200 {found:false}` for an
   unknown id or one outside the cohort - that's "the link no longer resolves", surfaced
   as `null` -> `404`, not an error. Upstream failures -> `502`; missing token -> `503`.
 - **Deep link:** Lumina supplies `deepLinkPath` on every line item (list AND detail); we

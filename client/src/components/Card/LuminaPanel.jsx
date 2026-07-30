@@ -76,7 +76,7 @@ function AttachSearch({ onAttach }) {
       // MUI v9: renderInput params carry slotProps, NOT InputProps — just spread
       // them and keep the busy spinner outside the field.
       renderInput={params => (
-        <TextField {...params} placeholder="Search Lumina by campaign, advertiser or WO…" />
+        <TextField {...params} placeholder="Search by campaign, advertiser, WO number or Lumina link…" />
       )}
     />
     {loading && <CircularProgress size={14} />}

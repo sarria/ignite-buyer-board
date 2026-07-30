@@ -67,9 +67,33 @@ const withUrl = li => (li?.deepLinkPath ? { ...li, url: WEB_BASE + li.deepLinkPa
 
 // ---- attach dropdown ------------------------------------------------------
 
-// Upstream `?name=` searches campaign name + company name. Buyers also search by
-// WO number, which `name` does NOT cover, so we fire the exact WO filter too and
-// merge — cheap (two small queries) and it means one box handles both.
+// One search box, several upstream filters. `?name=` only covers campaign name +
+// company name, so anything else a buyer might paste needs its own exact-match
+// query; we fire every applicable one in parallel and merge.
+//
+// TO ADD A SEARCH FIELD: append an entry here. `param` must be a filter Lumina
+// actually honours (guide §3 — unknown params are ignored silently, so a typo
+// looks like "no results" rather than an error). Keep the list ordered most
+// precise first: results are merged in that order, so an exact hit outranks a
+// name match.
+const OBJECT_ID = /^[a-f0-9]{24}$/i;
+
+// Buyers paste the whole Lumina URL as often as the id itself.
+const idFrom = term => {
+  const fromUrl = term.match(/\/lineitem\/[^/]+\/([a-f0-9]{24})/i);
+  if (fromUrl) return fromUrl[1];
+  return OBJECT_ID.test(term) ? term : null;
+};
+
+const LINE_ITEM_SEARCHES = [
+  { param: 'lineitemId', value: idFrom },
+  { param: 'advertiserId', value: t => (OBJECT_ID.test(t) ? t : null) },
+  // WO numbers aren't always numeric ("EGL19483", "TD MORRIS006"), so allow
+  // letters and spaces — just not free text long enough to be a name.
+  { param: 'woOrderNumber', value: t => (/^[A-Za-z0-9][A-Za-z0-9 _-]{1,23}$/.test(t) ? t : null) },
+  { param: 'name', value: t => (t.length >= 2 ? t : null) },
+];
+
 async function searchLineItems(q, limit = 20) {
   const term = (q || '').trim();
   if (!term) {
@@ -77,11 +101,14 @@ async function searchLineItems(q, limit = 20) {
     return (page.items || []).map(withUrl);
   }
 
-  const queries = [call('/sem/lineitems', { name: term, limit })];
-  if (/^[A-Za-z0-9-]{3,}$/.test(term)) {
-    queries.push(call('/sem/lineitems', { woOrderNumber: term, limit }));
-  }
-  const pages = await Promise.all(queries.map(p => p.catch(() => ({ items: [] }))));
+  const applicable = LINE_ITEM_SEARCHES
+    .map(({ param, value }) => ({ param, v: value(term) }))
+    .filter(({ v }) => v);
+
+  // One failing filter must not sink the whole search.
+  const pages = await Promise.all(applicable.map(({ param, v }) =>
+    call('/sem/lineitems', { [param]: v, limit }).catch(() => ({ items: [] }))
+  ));
 
   const seen = new Set();
   const merged = [];
