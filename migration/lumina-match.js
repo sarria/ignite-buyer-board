@@ -228,6 +228,34 @@ async function revert(reportPath) {
   await client.close();
 }
 
+// --board takes either the Mongo board _id (24-hex) or the Asana project GID (digits),
+// because those are easy to confuse and you're usually holding the Asana one — it's
+// what you passed to asana-migrate. Anything unresolvable prints the boards that DO
+// exist rather than a raw BSONError.
+async function resolveBoard(db, value) {
+  const boards = await db.collection('boards')
+    .find({}, { projection: { name: 1, asanaProjectGid: 1 } }).toArray();
+
+  const match = /^[a-f0-9]{24}$/i.test(value)
+    ? boards.find(b => String(b._id) === value)
+    : boards.find(b => String(b.asanaProjectGid) === String(value));
+
+  if (!match) {
+    console.error(`\nNo board matches --board=${value}.`);
+    if (/^\d+$/.test(value)) {
+      console.error('That looks like an Asana project GID; no board here was imported from it.');
+      console.error('Run asana-migrate.js + asana-seed.js for that project first.');
+    }
+    console.error('\nBoards that exist:');
+    for (const b of boards) {
+      console.error(`  ${b._id}  ${b.name}${b.asanaProjectGid ? `  (asana ${b.asanaProjectGid})` : ''}`);
+    }
+    process.exit(1);
+  }
+  console.log(`Board: ${match.name} (${match._id})`);
+  return match._id;
+}
+
 async function main() {
   const revertFrom = arg('revert');
   if (revertFrom) return revert(revertFrom);
@@ -242,7 +270,7 @@ async function main() {
   const db = client.db();
 
   const query = {};
-  if (BOARD) query.boardId = new ObjectId(BOARD);
+  if (BOARD) query.boardId = await resolveBoard(db, BOARD);
   if (!RELINK) query['lumina.lineitemId'] = { $in: [null, undefined] };
 
   let cards = await db.collection('cards')
