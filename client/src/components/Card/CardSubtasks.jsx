@@ -69,7 +69,7 @@ export default function CardSubtasks({ cardId, subtasks, onChange }) {
                   // Done = dimmed, NOT struck through — Asana does the same, and many
                   // subtask titles are short dates ("5/8", "9/15") that a line through
                   // the middle makes genuinely hard to read.
-                  sx: { color: sub.isComplete ? 'text.secondary' : 'text.primary' },
+                  sx: { color: sub.isComplete ? 'text.disabled' : 'text.primary' },
                 },
               }}
             />

@@ -73,7 +73,7 @@ export default function CardFace({ card, fields = [], users = [] }) {
             overflow: 'hidden',
             lineHeight: 1.4,
             // Completed = green ✓ + dimmed title, not struck through (matches Asana).
-            color: card.isCompleted ? 'text.secondary' : 'text.primary',
+            color: card.isCompleted ? 'text.disabled' : 'text.primary',
           }}
         >
           {card.title}

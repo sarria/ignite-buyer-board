@@ -60,12 +60,13 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       ├── components/
 │       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
-│       │   └── common/              # Sidebar, RichEditor, RichTextField, RichContent, Collapsible
+│       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent, Collapsible
+│       │   └── settings/            # LuminaFieldPicker (shared by the global + board pickers)
 │       ├── context/                 # AppContext (theme light/dark)
 │       ├── pages/                   # BoardListPage (dashboard), BoardPage,
 │       │   │                        #   BoardSettingsPage, AdminUsersPage,
 │       │   │                        #   AdminLuminaFieldsPage
-│       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab
+│       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab, LuminaTab
 │       ├── utils/                   # tagColor, userColor, linkify, lastBoard,
 │       │                            #   boardCache, luminaFields
 │       ├── theme.js                 # light/dark MUI themes
@@ -105,7 +106,9 @@ app_settings`
 { _id, name, email /*unique*/, role /*'admin'|'member'*/, microsoftId, defaultBoardId, createdAt }
 
 // boards
-{ _id, name, description, createdBy, createdAt, asanaProjectGid, isArchived }
+{ _id, name, description, createdBy, createdAt, asanaProjectGid, isArchived,
+  luminaFields: { hiddenLineItemFields:[String], hiddenAdvertiserFields:[String],
+                  updatedAt, updatedBy } | absent }   // absent = inherit the global setting
 
 // columns  (per board)
 { _id, boardId, name, position, color /*hex*/, asanaGid, createdAt }
@@ -181,8 +184,10 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
 Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · PUT /subtasks/:id · DELETE /subtasks/:id
 Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body, bodyHtml} · DELETE(admin) /comments/:id
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
-Settings   GET /settings/lumina-fields → {catalog, advertiserFields, lineItemFields, updatedAt}
-           PUT(admin) {advertiserFields[], lineItemFields[]} · DELETE(admin) = back to "show all"
+Settings   GET /settings/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
+           PUT(admin) {hiddenLineItemFields[], hiddenAdvertiserFields[]} · DELETE(admin) = back to "show all"
+           GET /boards/:id/lumina-fields → same + {inherited} (board's own selection, else global)
+           PUT(admin) = set this board's override · DELETE(admin) = inherit the global one again
 Templates  GET/POST /boards/:id/templates · PUT /boards/:id/templates/reorder
            PUT /templates/:id · DELETE /templates/:id · POST /templates/:id/apply {columnId?}
 Uploads    POST /uploads/presign {filename, contentType} → {uploadUrl, publicUrl, key}
@@ -293,7 +298,7 @@ PORT=3001  CLIENT_URL=http://localhost:5173
   The board **title in the top bar is click-to-edit** (inline rename → `PUT /boards/:id`;
   updates board state + cache, and dispatches a `board:renamed` window event the Sidebar
   listens for so its list updates without a refetch).
-- `/boards/:id/settings` → Columns / Fields / Templates tabs, rendered as a centered
+- `/boards/:id/settings` → Columns / Fields / Templates / Lumina tabs, rendered as a centered
   **outlined panel** (header: back button + board name + "Board settings", per-tab hint
   line). Columns/Fields rows are card-like (hover bg, color dot / type chip, actions
   revealed on hover) with a divider-separated add composer at the bottom. All three tabs
@@ -539,11 +544,22 @@ real campaigns with it.
   `tacticDetails`==`tactics`).
 - **Blank values are omitted, not printed as an empty row** — Lumina's page does the
   same. `false` and `0` are values and still render.
-- **Which fields show is a GLOBAL admin setting**: `/admin/lumina-fields`
-  (`AdminLuminaFieldsPage`, sidebar -> "Lumina fields"), stored in
-  `app_settings._id='luminaFields'`. Applies to every board and user, effective on the
-  next card open. Read path is cached per tab in `api/settings.js` - one request, not one
-  per card open; a failure falls back to showing everything rather than hiding data.
+- **Which fields show is an admin setting, global with a PER-BOARD override.** The
+  global default lives at `/admin/lumina-fields` (`AdminLuminaFieldsPage`, sidebar ->
+  "Lumina fields") in `app_settings._id='luminaFields'`; a board can override it in
+  Board settings -> **Lumina** (`pages/settings/LuminaTab.jsx`), stored as
+  `luminaFields` on the **board doc**. Resolution is **board -> global -> show
+  everything**, done server-side in `getBoardLuminaFields`, which also returns
+  `inherited` so the tab can say which one you're looking at. "Use the global
+  selection" `$unset`s the override — that is NOT the same as "show everything",
+  which only the global setting can say. Effective on the next card open. Read path is
+  cached per board id in `api/settings.js` - one request per board, not one per card
+  open; a failure falls back to showing everything rather than hiding data.
+  Both pickers render the SAME `components/settings/LuminaFieldPicker.jsx` so they
+  can't drift; the staleness/hide-list rules live in one `usableSelection()` in
+  `server/controllers/settings.js` for the same reason.
+  The override rides on the board doc **on purpose**: the board delete cascade takes it
+  along automatically, so there's no new per-board collection to wire in.
 - **The setting stores what is HIDDEN, not what is kept** (`hiddenLineItemFields` /
   `hiddenAdvertiserFields`). This is load-bearing, not a style choice: the line item is a
   document whose field set varies per record, and the picker's catalog is only a sample,
@@ -735,12 +751,6 @@ All route handlers try/catch → central error middleware; error shape
   rich description editing (images preserved), and add/remove attachments in the
   Attachments section. Remove deletes from S3, so the IAM policy needs
   **`s3:DeleteObject`**. Optional, not built: slash ("/") menu, @mentions.
-- **Per-board override of the Lumina field selection.** Deliberately NOT built
-  (2026-07-24): the setting is global because the field set is identical for every
-  advertiser, so the only reason to diverge is team preference — add it when a team
-  actually asks. Shape is ready for it: put `luminaFields` on the board doc (`null` =
-  inherit global) and add a Lumina tab to board settings; nothing about the global
-  storage needs to change.
 - **Lumina phase 2:** show the linked line item on the board card, filter a board by
   advertiser, and curate the default field selection once buyers say which of the ~75
   fields they actually use. Still missing from the API: the **budget flighting rows**

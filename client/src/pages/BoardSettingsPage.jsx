@@ -11,6 +11,7 @@ import { getUsers } from '../api/users';
 import ColumnsTab from './settings/ColumnsTab';
 import FieldsTab from './settings/FieldsTab';
 import TemplatesTab from './settings/TemplatesTab';
+import LuminaTab from './settings/LuminaTab';
 
 export default function BoardSettingsPage() {
   const { id } = useParams();
@@ -37,7 +38,8 @@ export default function BoardSettingsPage() {
 
   const tabHint = ['Drag-free list of board sections. Click a row to rename or recolor it.',
     'Custom fields shown on cards in this board (text, number, date, url, or enum).',
-    'Reusable card templates: prefill column, assignee, fields, and subtasks.'][tab];
+    'Reusable card templates: prefill column, assignee, fields, and subtasks.',
+    'Which Lumina fields the card panel shows on this board. Overrides the global selection.'][tab];
 
   return (
     <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: 'background.default' }}>
@@ -66,6 +68,7 @@ export default function BoardSettingsPage() {
             <Tab label="Columns" />
             <Tab label="Fields" />
             <Tab label="Templates" />
+            <Tab label="Lumina" />
           </Tabs>
 
           <Box sx={{ p: 2.5 }}>
@@ -75,6 +78,7 @@ export default function BoardSettingsPage() {
             {tab === 0 && <ColumnsTab boardId={id} columns={columns} onChange={setColumns} />}
             {tab === 1 && <FieldsTab boardId={id} fields={fields} onChange={setFields} />}
             {tab === 2 && <TemplatesTab boardId={id} templates={templates} columns={columns} fields={fields} users={users} onChange={setTemplates} />}
+            {tab === 3 && <LuminaTab boardId={id} />}
           </Box>
         </Paper>
       </Box>

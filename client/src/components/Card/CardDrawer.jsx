@@ -100,7 +100,7 @@ function CardTitle({ title, completed, readOnly, onSave }) {
         fontSize: 20, lineHeight: 1.3,
         cursor: readOnly ? 'default' : 'text',
         // Completed = dimmed, not struck through (matches Asana + CardFace/CardSubtasks).
-        color: completed ? 'text.secondary' : 'text.primary',
+        color: completed ? 'text.disabled' : 'text.primary',
         '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover', borderRadius: 1 },
         px: 0.5, mx: -0.5,
       }}
@@ -748,6 +748,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             <LuminaPanel
               key={`lumina-${card._id}`}
               lumina={card.lumina}
+              boardId={card.boardId}
               readOnly={readOnly}
               onChange={l => saveField({ lumina: l })}
             />

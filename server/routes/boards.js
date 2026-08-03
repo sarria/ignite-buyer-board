@@ -7,6 +7,7 @@ const columnCtrl = require('../controllers/columns');
 const fieldCtrl = require('../controllers/fields');
 const cardCtrl = require('../controllers/cards');
 const templateCtrl = require('../controllers/templates');
+const settingsCtrl = require('../controllers/settings');
 
 const router = Router();
 
@@ -32,6 +33,11 @@ router.put('/:id/cards/reorder', cardCtrl.reorderCards);
 router.get('/:id/templates', templateCtrl.listTemplates);
 router.post('/:id/templates', templateCtrl.createTemplate);
 router.put('/:id/templates/reorder', templateCtrl.reorderTemplates);
+
+// Lumina field selection for this board (absent = inherit the global setting)
+router.get('/:id/lumina-fields', settingsCtrl.getBoardLuminaFields);
+router.put('/:id/lumina-fields', requireAdmin, settingsCtrl.updateBoardLuminaFields);
+router.delete('/:id/lumina-fields', requireAdmin, settingsCtrl.resetBoardLuminaFields);
 
 // Board CRUD — /:id must come after all /:id/nested routes
 router.get('/:id', c.getBoard);

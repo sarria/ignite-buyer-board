@@ -10,7 +10,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import {
   searchLuminaLineItems, getLuminaLineItem, getLuminaAdvertiser,
 } from '../../api/lumina';
-import { getLuminaFieldSettings } from '../../api/settings';
+import { getLuminaFieldSettings, getBoardLuminaFieldSettings } from '../../api/settings';
 
 import LuminaSnapshot from './LuminaSnapshot';
 
@@ -84,7 +84,7 @@ function AttachSearch({ onAttach }) {
   );
 }
 
-export default function LuminaPanel({ lumina, readOnly, onChange }) {
+export default function LuminaPanel({ lumina, readOnly, onChange, boardId }) {
   const lineitemId = lumina?.lineitemId || null;
   const advertiserId = lumina?.advertiserId || null;
   const linked = lineitemId || advertiserId;
@@ -95,16 +95,18 @@ export default function LuminaPanel({ lumina, readOnly, onChange }) {
   const [open, setOpen] = useState(true);
   const [fieldSettings, setFieldSettings] = useState(null);
 
-  // Which fields the admin HID. Cached per tab, so this is one network call and
-  // then free on every later card open. A failure here must not hide data — an
-  // empty setting means show everything.
+  // Which fields are HIDDEN for THIS board — the server resolves the board's own
+  // selection or falls back to the global one. Cached per board id, so this is one
+  // network call per board and then free on every later card open. A failure here
+  // must not hide data — an empty setting means show everything.
   useEffect(() => {
     let cancelled = false;
-    getLuminaFieldSettings()
+    const load = boardId ? getBoardLuminaFieldSettings(boardId) : getLuminaFieldSettings();
+    load
       .then(s => { if (!cancelled) setFieldSettings(s); })
       .catch(() => { if (!cancelled) setFieldSettings({}); });
     return () => { cancelled = true; };
-  }, []);
+  }, [boardId]);
 
   // Re-pull on every card open (this mounts with the drawer) and on refresh.
   // Deliberately NOT awaited by the drawer: the card's own data is already on
