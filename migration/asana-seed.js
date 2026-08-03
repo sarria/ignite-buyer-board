@@ -342,7 +342,12 @@ async function main() {
     );
 
     const cardId = cardResult._id;
-    const isNew = !cardResult.asanaGid;
+    // `existingCard` is the pre-upsert lookup on the same asanaGid, so it answers
+    // "was this card already here?" for free. Do NOT infer it from cardResult:
+    // returnDocument:'after' always hands back a doc carrying asanaGid (it's in the
+    // $set), so every card read as "updated" and a clean re-import reported
+    // "0 inserted" — the exact number you'd check to catch a botched import.
+    const isNew = !existingCard;
     if (isNew) report.cards.inserted++;
     else report.cards.updated++;
 
