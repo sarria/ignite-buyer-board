@@ -72,7 +72,7 @@ export default function CardFace({ card, fields = [], users = [] }) {
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
             lineHeight: 1.4,
-            textDecoration: card.isCompleted ? 'line-through' : 'none',
+            // Completed = green ✓ + dimmed title, not struck through (matches Asana).
             color: card.isCompleted ? 'text.secondary' : 'text.primary',
           }}
         >

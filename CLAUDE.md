@@ -322,7 +322,7 @@ lists scroll, never the page (mirrors Asana).
 - **BoardCard / CardFace / ArchivedCard** — board cards. `CardFace` is the shared
   visual; `BoardCard` adds dnd-kit `useSortable`; `ArchivedCard` is read-only & NOT
   sortable (so large archives render fast). Cards show: tag glyphs (colored `Sell`
-  icons, name on hover), Health chip, title (strikethrough + ✓ if completed),
+  icons, name on hover), Health chip, title (dimmed + ✓ if completed),
   assignee avatar (per-user color), due date (red if overdue), subtask & comment counts.
 - **ArchivedGrid** — the archive view (archive toggle in the top bar) is a flat,
   responsive **grid/gallery** of `ArchivedCard`s, NOT the column layout. Cards are
@@ -390,7 +390,10 @@ Familiar to Asana users (board reference), but with our color rules.
   drawer combobox. Color derived from tag name (consistent everywhere).
 - Users: colored initial avatars, one consistent color per person (no photos yet).
 - Long comments/descriptions truncate with "See more".
-- Completed cards: green ✓ + strikethrough title; hidden by default (board "Tasks"
+- Completed = green ✓ + **dimmed** title, never strikethrough (Asana does the same, and
+  many subtask titles are short dates like `5/8` that a line through the middle makes
+  hard to read). Applies to card faces, the drawer title, and subtasks — keep them
+  consistent. Hidden by default (board "Tasks"
   filter: Incomplete / All / Completed).
 - Theming: MUI light/dark in `theme.js`, primary `#4573d2`; user preference in
   AppContext (defaults to dark / OS pref), persisted in localStorage.

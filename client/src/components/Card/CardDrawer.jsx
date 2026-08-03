@@ -99,7 +99,7 @@ function CardTitle({ title, completed, readOnly, onSave }) {
       sx={{
         fontSize: 20, lineHeight: 1.3,
         cursor: readOnly ? 'default' : 'text',
-        textDecoration: completed ? 'line-through' : 'none',
+        // Completed = dimmed, not struck through (matches Asana + CardFace/CardSubtasks).
         color: completed ? 'text.secondary' : 'text.primary',
         '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover', borderRadius: 1 },
         px: 0.5, mx: -0.5,
