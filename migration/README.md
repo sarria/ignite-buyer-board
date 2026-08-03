@@ -214,6 +214,7 @@ Attachments already do the right thing: a re-seed keeps user-uploaded files (nat
 |---|---|
 | `querySrv ECONNREFUSED` | Flaky local DNS. Set `DNS_SERVERS=1.1.1.1,8.8.8.8`. Never in prod. |
 | `Lumina 429` / `lookup-failed` | Throttling. Re-run with `--pace=400`. |
+| Lots of `url-unresolved`, all recent campaigns | **`LUMINA_API_BASE` points at `release11`, whose data looks frozen ~2026-05-22.** Line items created after that return `{found:false}`, so they can't be matched, viewed, or attached. Not a data problem — switch to the production base and re-run. |
 | Broken images after a re-import | Re-seeded from a stale export after the S3 files were deleted. Re-run `asana-migrate.js`. |
 | `Archive the board before deleting it` (409) | Working as designed (rule 7). Archive first. |
 | `Export file not found` | Path is resolved relative to `migration/`. Pass just the filename. |

@@ -240,6 +240,14 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 # Lumina SEM API (read-only). TOKEN IS SERVER-ONLY — never expose to the browser.
 LUMINA_API_BASE=https://release11.townsquarelumina.com/lumina/orders/api/ignite/ext
+                           # ⚠ release11 is a RELEASE env and its data looks frozen
+                           #   ~2026-05-22: of the line-item ids buyers pasted into
+                           #   cards, every one created on/before 2026-05-22 resolves
+                           #   and every one after it returns {found:false} — a clean
+                           #   date split, zero overlap (measured 2026-08-03). So new
+                           #   campaigns can't be viewed OR attached. Get the
+                           #   PRODUCTION base from Lumina, then re-run lumina-match.
+                           #   Note we already deep-link to prod (LUMINA_WEB_BASE).
 LUMINA_API_TOKEN=          # unset → /lumina/* returns 503, panel shows nothing
 LUMINA_WEB_BASE=https://townsquarelumina.com   # host prepended to Lumina's deepLinkPath
 # Asana (migration only)
