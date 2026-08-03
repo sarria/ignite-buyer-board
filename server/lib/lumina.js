@@ -122,6 +122,20 @@ async function searchLineItems(q, limit = 20) {
   return merged.slice(0, limit);
 }
 
+// Exact WO-order-number lookup. Unlike searchLineItems this fires ONE filter and
+// lets upstream errors throw: batch callers (migration/lumina-match.js) must be
+// able to tell "Lumina is unhappy" from "this WO doesn't exist", because they
+// record the answer instead of letting a human retry. Also skips the `?name=`
+// filter, so a bare numeric WO can't pull in an unrelated campaign by name.
+async function lineItemsByWo(wo, limit = 25) {
+  const term = String(wo || '').trim();
+  if (!term) return [];
+  const page = await call('/sem/lineitems', { woOrderNumber: term, limit });
+  return (page.items || [])
+    .filter(li => String(li.woOrderNumber || '').toUpperCase() === term.toUpperCase())
+    .map(withUrl);
+}
+
 async function searchAdvertisers(q, limit = 20) {
   const page = await call('/sem/advertisers', { name: (q || '').trim() || undefined, limit });
   return page.items || [];
@@ -220,6 +234,6 @@ async function fieldCatalog() {
 }
 
 module.exports = {
-  configured, searchLineItems, searchAdvertisers,
+  configured, searchLineItems, lineItemsByWo, searchAdvertisers,
   lineItemSnapshot, advertiserSnapshot, fieldCatalog, FALLBACK_CATALOG,
 };

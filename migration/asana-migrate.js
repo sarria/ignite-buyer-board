@@ -1,15 +1,20 @@
 /**
  * asana-migrate.js
  *
- * Migrates The A Team (Team Rachel) board from Asana to a JSON file.
+ * Migrates ONE Asana project (board) to a JSON file.
  * READ from Asana, WRITE to a local JSON file. Does not touch any database yet.
  *
- * Output: asana-export-rachel.json
- *
  * Usage:
- *   ASANA_PAT=your_token_here node asana-migrate.js
+ *   node migration/asana-migrate.js --project=<gid> [--out=<file>]
  *
- * Safe to re-run — output file is overwritten each time.
+ *   --project  Asana project GID (required). Find it with asana-explore.js, or in
+ *              the project URL: app.asana.com/0/<gid>/list
+ *   --out      Output filename. Defaults to asana-export-<project-name>.json,
+ *              derived from the project's real name once we've fetched it.
+ *
+ * Needs ASANA_PAT (and the S3 vars, since it uploads every Asana attachment).
+ * Safe to re-run — the output file is overwritten, and S3 uploads skip objects
+ * that already exist (HeadObject), so a re-run is cheap and resumable.
  */
 require('dotenv').config();
 
@@ -25,12 +30,27 @@ const { S3Client, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/clie
 
 const ASANA_PAT = process.env.ASANA_PAT || 'PASTE_YOUR_TOKEN_HERE';
 const BASE_URL = 'https://app.asana.com/api/1.0';
-// Always write into migration/ (where the seeder reads it), regardless of CWD.
-const OUTPUT_FILE = path.join(__dirname, 'asana-export-rachel.json');
+function arg(name) {
+  const hit = process.argv.find(a => a.startsWith(`--${name}=`));
+  return hit ? hit.split('=').slice(1).join('=') : null;
+}
 
-// The A Team (Team Rachel) — confirmed GID from exploration
-const PROJECT_GID = '1156457376337923';
-const PROJECT_NAME = 'The A Team (Team Rachel)';
+// Which project to export. Required — there is no default, deliberately: a default
+// meant an accidental run silently re-exported Rachel's board over the file you
+// wanted, and each board is thousands of API calls plus S3 uploads.
+const PROJECT_GID = arg('project');
+if (!PROJECT_GID || !/^\d+$/.test(PROJECT_GID)) {
+  console.error('Usage: node migration/asana-migrate.js --project=<gid> [--out=<file>]');
+  console.error('  --project must be an Asana project GID (digits only).');
+  process.exit(1);
+}
+
+// Filled in from --out, or derived from the project name at step [2]. Always lands
+// in migration/ (where the seeder reads it), regardless of CWD.
+const slug = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'board';
+const outPath = f => path.join(__dirname, f.endsWith('.json') ? f : `${f}.json`);
+let OUTPUT_FILE = arg('out') ? outPath(arg('out')) : null;
+let PROJECT_NAME = `project ${PROJECT_GID}`;
 
 // Delay between API calls to avoid rate limiting (ms)
 const RATE_LIMIT_DELAY = Number(process.env.RATE_LIMIT_MS) || 150;
@@ -178,7 +198,10 @@ async function main() {
     `/projects/${PROJECT_GID}?opt_fields=gid,name,created_at,modified_at,archived,color,notes`
   );
   const project = projectData.data;
+  PROJECT_NAME = project.name;
+  if (!OUTPUT_FILE) OUTPUT_FILE = outPath(`asana-export-${slug(project.name)}`);
   console.log(`✓ ${project.name} | archived: ${project.archived}`);
+  console.log(`  → ${OUTPUT_FILE}`);
 
   // 3. Columns (sections)
   console.log('\n[3] Loading columns...');

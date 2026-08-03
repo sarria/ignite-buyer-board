@@ -80,7 +80,8 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │   ├── lib/                         # s3.js (presign + delete + publicUrl)
 │   └── db/                          # index.js (connection + indexes), test-connection.js
 ├── api/index.js                     # Vercel serverless entry → exports server/app
-├── migration/                       # asana-explore.js, asana-migrate.js, asana-seed.js
+├── migration/                       # asana-explore.js, asana-migrate.js, asana-seed.js,
+│                                    #   lumina-match.js, README.md (runbook)
 │                                    #   (+ asana-export-rachel.json, gitignored)
 ├── vercel.json                      # build client → client/dist, route /api/* to function
 └── CLAUDE.md / SPEC.md / API.md
@@ -467,6 +468,10 @@ real campaigns with it.
   `EGL19483` / `TD MORRIS006`), a bare **line-item or advertiser id**, and a **pasted
   Lumina URL** (the id is extracted from `/lineitem/{seg}/{id}`). `?name=` only covers
   campaign + company name, hence the extra exact-match queries.
+  `lineItemsByWo(wo)` is the batch counterpart: ONE exact `woOrderNumber` filter, errors
+  allowed to **throw** (no `?name=`, so a bare numeric WO can't pull an unrelated campaign
+  in by name). `searchLineItems` swallows per-filter errors on purpose — correct for the
+  attach box where a human retries, wrong for `lumina-match.js` which records its verdict.
   **To add a search field:** append to `LINE_ITEM_SEARCHES` in `server/lib/lumina.js`.
   `param` must be a filter Lumina actually honours (guide §3 — unknown params are
   ignored silently, so a typo reads as "no results" rather than an error). The list is
@@ -553,8 +558,17 @@ stays "show everything" until someone narrows it.
 Standalone scripts in `migration/` (read Asana, write JSON, then seed Mongo). Both
 honor `DNS_SERVERS`. The export JSON is gitignored.
 
-### `asana-migrate.js` (Asana → `asana-export-rachel.json`)
-- Hardcoded to one project GID; writes into `migration/` regardless of CWD.
+**→ `migration/README.md` is the step-by-step runbook**: import a new board, clean
+re-import an existing one, per-board column decisions, known project GIDs, and
+troubleshooting. This section covers what the scripts *are*; the runbook covers how to
+*run* them. Keep both current.
+
+### `asana-migrate.js` (Asana → `asana-export-<project-name>.json`)
+- **One project per run: `--project=<gid>` is REQUIRED** (no default — a default meant
+  an accidental run re-exported Rachel's board over the file you wanted, and each board
+  is thousands of API calls plus S3 uploads). `--out=<file>` optional; otherwise the
+  name is derived from the project's real name. Writes into `migration/` regardless
+  of CWD.
 - **Parallel** worker pool (`MIGRATE_CONCURRENCY`, default 6) + a **global rate
   limiter** (`RATE_LIMIT_MS`, default 150) so Asana calls stay spaced under concurrency.
 - Per task captures: fields, assignee, due, tags, `is_completed`/`completed_at`,
@@ -567,6 +581,8 @@ honor `DNS_SERVERS`. The export JSON is gitignored.
 - External-link attachments (Google Drive/Dropbox) have no bytes → skipped.
 
 ### `asana-seed.js` (JSON → MongoDB, idempotent, upsert by `asanaGid`)
+- Takes the export file positionally or as `--file=` (defaults to
+  `asana-export-rachel.json`): `node migration/asana-seed.js asana-export-foo.json --auto`.
 - Creates board (by asanaProjectGid), columns (preserve order), custom fields —
   including per-card "disconnected" fields not in the project (e.g. SEM-KPI; enum vs
   url vs text inferred from values).
@@ -577,6 +593,48 @@ honor `DNS_SERVERS`. The export JSON is gitignored.
   `descriptionHtml`.
 - Merges attachments on re-seed: keeps user-uploaded (native, under
   `buyer-board/uploads/`) attachments and replaces only the Asana-migrated ones.
+
+### `lumina-match.js` (link seeded cards → Lumina line items)
+Buyers already paste Lumina identifiers into the description, so we mine them instead
+of asking anyone to re-link 2.4k cards by hand. Writes ONLY the `lumina` link subdoc —
+never Lumina data (see *Lumina*). **Deliberately standalone, NOT part of `asana-seed.js`**:
+it re-runs as Lumina changes, works on already-seeded cards without a re-seed, and keeps
+the Asana import independent of Lumina's uptime. Board-agnostic — run it after seeding
+each new board.
+
+```
+node migration/lumina-match.js                    # dry run (default), all boards
+node migration/lumina-match.js --apply            # write the links
+node migration/lumina-match.js --board=<id>       # one board · --relink · --limit=N
+node migration/lumina-match.js --pace=400         # ms between cards (raise on 429s)
+node migration/lumina-match.js --revert=<report>  # undo one --apply run
+```
+
+- **Match tiers, most precise first; a card takes the first that resolves:** (1) a pasted
+  `/lumina/view/lineitem/{seg}/{id}` URL → that exact line item; (2) `WO#(GPID): 6113181`
+  in the description; (3) a leading WO in the title (`6693359_MT_Great Falls_…`, which is
+  Lumina's own `campaignName` convention).
+- **A WO is an ORDER number → 1:N line items.** The tie is broken ONLY on the product tag
+  the title already carries (`[SEM]`/`[PMAX]`/`SEM-SEARCH` vs `product`/`subProduct`/
+  `displayName`). If that doesn't single one out, the card is **skipped and reported** — a
+  wrong link is worse than none, because the drawer presents it as fact. Don't add
+  cleverer heuristics (e.g. "prefer Live over Cancelled") without buyer sign-off.
+- **No name/fuzzy matching** (decided 2026-08-03). Only ~20% of Rachel's cards carry any
+  identifier; the other ~1,930 stay unlinked rather than risk plausible-but-wrong links.
+- **Errors must never be recorded as "not found."** A batch run writes down its verdict
+  instead of letting a human retry, so it retries with backoff and reports `lookup-failed`
+  (re-runnable) separately from `wo-not-found`/`url-unresolved` (final). This is why it
+  uses `lineItemsByWo()` and not `searchLineItems()` — the latter swallows per-filter
+  errors into an empty result, which is right for the attach dropdown and wrong here.
+  Lumina answers **429** under batch load; that needs seconds of backoff, not ms.
+- **Reports:** dry runs overwrite `lumina-match-report.json`; an `--apply` run writes its
+  own timestamped `lumina-match-applied-<ts>.json`, because that file is the only record
+  of what to undo. `--revert` unsets only the cards that run linked and only if the link
+  still matches, so links buyers attached by hand in the drawer survive.
+- **Result on Rachel's board (2026-08-03):** 390 of 484 identifier-bearing cards linked
+  (354 by URL, 33 by desc WO, 3 by title WO) out of 2,412 total. Skips: 88 `wo-not-found`
+  (short old WOs for campaigns aged out of the SEM cohort — real misses, not a parser bug),
+  4 `url-unresolved`, 2 ambiguous.
 
 ---
 

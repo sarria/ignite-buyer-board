@@ -6,6 +6,10 @@ dist/
 
 # Asana export data (large, regenerable; only used by the local seeder)
 migration/asana-export-*.json
+# Match reports carry real advertiser/campaign names. They stay on disk (an
+# applied report is the only record --revert can undo from), just not in git.
+migration/lumina-match-report.json
+migration/lumina-match-applied-*.json
 
 # External SEM API integration guide (contains a live service token — keep out of git)
 ext-sem-api-guide-asana.md

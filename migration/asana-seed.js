@@ -24,7 +24,19 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 
-const EXPORT_FILE = path.join(__dirname, 'asana-export-rachel.json');
+// Which export to load. Positional or --file=, so both of these work:
+//   node migration/asana-seed.js asana-export-team-bravo.json --auto
+//   node migration/asana-seed.js --file=asana-export-team-bravo.json
+// Defaults to Rachel's export, the one board already seeded from this file.
+function arg(name) {
+  const hit = process.argv.find(a => a.startsWith(`--${name}=`));
+  return hit ? hit.split('=').slice(1).join('=') : null;
+}
+const positional = process.argv.slice(2).find(a => !a.startsWith('--'));
+const EXPORT_FILE = path.resolve(
+  __dirname,
+  arg('file') || positional || 'asana-export-rachel.json',
+);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
