@@ -245,9 +245,15 @@ LUMINA_API_BASE=https://release11.townsquarelumina.com/lumina/orders/api/ignite/
                            #   cards, every one created on/before 2026-05-22 resolves
                            #   and every one after it returns {found:false} — a clean
                            #   date split, zero overlap (measured 2026-08-03). So new
-                           #   campaigns can't be viewed OR attached. Get the
-                           #   PRODUCTION base from Lumina, then re-run lumina-match.
-                           #   Note we already deep-link to prod (LUMINA_WEB_BASE).
+                           #   campaigns can't be viewed OR attached. Lumina (Stephen
+                           #   Alba) confirmed: "you are hitting release, switch to
+                           #   production". Note we already deep-link to prod
+                           #   (LUMINA_WEB_BASE) — only the READ base is stale.
+                           # PROD = https://townsquarelumina.com/lumina/orders/api/ignite/ext
+                           #   (host + path verified; it answers with Lumina's own JSON
+                           #   error shape). BUT the release token 401s there — swapping
+                           #   the base ALONE breaks every /lumina/* call. Change both
+                           #   at once, then re-run migration/lumina-match.js.
 LUMINA_API_TOKEN=          # unset → /lumina/* returns 503, panel shows nothing
 LUMINA_WEB_BASE=https://townsquarelumina.com   # host prepended to Lumina's deepLinkPath
 # Asana (migration only)
