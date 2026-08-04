@@ -540,7 +540,10 @@ real campaigns with it.
   add a radius?", "Use their Google Ads account?") so buyers read the same thing in both
   places. Handles the shapes Lumina actually returns: people are objects
   (`{username, fullName, accountName}` -> show `fullName`), `*Budget` keys render as
-  currency, `*Date` keys as zero-padded MM/DD/YYYY, strings are trimmed (some values
+  currency, `*Date` keys as zero-padded MM/DD/YYYY **from UTC parts** (Lumina's dates are
+  calendar dates at UTC midnight; local getters printed the previous day, so a campaign
+  whose Lumina page read 01/01/2025 showed as 12/31/2024 here - same bug class as card
+  due dates), strings are trimmed (some values
   carry leading spaces), arrays join, `tactics` (keyed by tactic -> `{campaignName}`)
   flattens to the campaign-name list Lumina shows, and nested objects (`buildDetails`)
   expand into indented sub-rows instead of raw JSON. Values containing URLs become
