@@ -328,7 +328,11 @@ lists scroll, never the page (mirrors Asana).
   visual; `BoardCard` adds dnd-kit `useSortable`; `ArchivedCard` is read-only & NOT
   sortable (so large archives render fast). Cards show: tag glyphs (colored `Sell`
   icons, name on hover), Health chip, title (dimmed + ✓ if completed),
-  assignee avatar (per-user color), due date (red if overdue), subtask & comment counts.
+  assignee avatar (per-user color), due date (red if overdue), subtask & comment counts,
+  and a brand-blue **link glyph when the card is linked to Lumina** (tooltip names the
+  campaign from the stored `lumina.name` — no per-card Lumina fetch on the board).
+  Blue rather than muted like the counts: it's a property of the card, not a tally, so
+  it reads at a glance when scanning a column for what still needs linking.
 - **ArchivedGrid** — the archive view (archive toggle in the top bar) is a flat,
   responsive **grid/gallery** of `ArchivedCard`s, NOT the column layout. Cards are
   read-only; each shows a small uppercase **column-name label** (the column it lived

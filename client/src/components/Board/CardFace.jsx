@@ -3,6 +3,7 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SellIcon from '@mui/icons-material/Sell';
+import LinkIcon from '@mui/icons-material/Link';
 import { tagColor } from '../../utils/tagColor';
 import { userColor } from '../../utils/userColor';
 
@@ -38,6 +39,11 @@ export default function CardFace({ card, fields = [], users = [] }) {
   const subtaskDone = card.subtaskDone || 0;
   const commentCount = card.commentCount || 0;
   const overdue = isOverdue(card.dueDate);
+  // Legacy cards hold only an advertiserId — they're still linked, so count both
+  // (same test LuminaPanel uses). `name` is the display copy stored on the link, so
+  // the tooltip can name the campaign without a Lumina round-trip per card.
+  const luminaLinked = !!(card.lumina?.lineitemId || card.lumina?.advertiserId);
+  const luminaName = card.lumina?.name;
 
   return (
     <>
@@ -97,6 +103,14 @@ export default function CardFace({ card, fields = [], users = [] }) {
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Linked to Lumina. Brand blue (not muted like the counts) because it's a
+              property of the card, not a tally — it should read at a glance when you
+              scan a column for which accounts still need linking. */}
+          {luminaLinked && (
+            <Tooltip title={luminaName ? `Lumina · ${luminaName}` : 'Linked to Lumina'}>
+              <LinkIcon sx={{ fontSize: 15, color: 'primary.main' }} />
+            </Tooltip>
+          )}
           {subtaskCount > 0 && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
               <CheckBoxOutlinedIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
