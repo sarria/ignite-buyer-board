@@ -99,11 +99,16 @@ const isMoneyKey = k => /budget$/i.test(k);
 
 const money = n => `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 // Lumina prints MM/DD/YYYY (zero-padded) - match it so the two read the same.
+//
+// UTC getters, NOT local. Lumina's dates are calendar dates at UTC midnight
+// (`2025-01-01T00:00:00.000Z`), so local getters print the previous day west of
+// Greenwich: a campaign Lumina's own page showed starting 01/01/2025 rendered here as
+// 12/31/2024. Same class of bug as card due dates - see utils/dueDate.
 const day = v => {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v);
   const p = n => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()}`;
+  return `${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}/${d.getUTCFullYear()}`;
 };
 
 // Lumina returns people as { username, fullName, accountName } — show the name.
