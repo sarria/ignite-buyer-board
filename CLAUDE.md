@@ -58,7 +58,8 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       ├── api/                     # axios calls: boards, columns, fields, cards,
 │       │                            #   subtasks, comments, templates, users, uploads, client
 │       ├── components/
-│       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard
+│       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard,
+│       │   │                        #   ArchivedGrid, CalendarView
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
 │       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent,
 │       │   │                        #   Collapsible, DueDatePicker
@@ -69,7 +70,7 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       │   │                        #   AdminLuminaFieldsPage
 │       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab, LuminaTab
 │       ├── utils/                   # tagColor, userColor, linkify, lastBoard,
-│       │                            #   boardCache, luminaFields, dueDate
+│       │                            #   boardCache, luminaFields, dueDate, cardFilters
 │       ├── theme.js                 # light/dark MUI themes
 │       ├── App.jsx                  # router + fixed app-shell layout
 │       └── main.jsx
@@ -279,7 +280,8 @@ PORT=3001  CLIENT_URL=http://localhost:5173
   offered only when a board is deletable (empty OR archived); otherwise the menu item is
   disabled with a hint to archive first. Board changes fire a `boards:changed` window event
   the Sidebar listens for.
-- `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer).
+- `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer;
+  `?view=calendar` opens the Calendar view).
   **Frame-first loading**: board/columns load first and render immediately (skeleton
   columns while the board loads, skeleton cards while cards load); cards, users, and
   templates load independently so the page never shows a blank full-page spinner —
@@ -329,6 +331,16 @@ lists scroll, never the page (mirrors Asana).
   campaign from the stored `lumina.name` — no per-card Lumina fetch on the board).
   Blue rather than muted like the counts: it's a property of the card, not a tally, so
   it reads at a glance when scanning a column for what still needs linking.
+- **CalendarView** — month calendar of cards by **due date**, mirroring Asana's Calendar.
+  Compact rows (assignee avatar, title, tag dots, Health as a **left edge** — no room for
+  the board's chip), `+N more` per day expands that day, today's number is a filled blue
+  circle, adjacent-month cells are shaded. Weeks start **Monday** here while
+  `DueDatePicker` starts **Sunday** — deliberate, Asana itself differs between its
+  calendar and its date picker.
+  **Cards with no due date can't be placed, so they're shown as a `No due date · N` count,
+  never silently dropped** — on these boards most cards have no due date (Rachel's: 1,262
+  of 2,423 do), so hiding them without saying so would badly mislead.
+  Only the day grid scrolls, so the page still never does.
 - **ArchivedGrid** — the archive view (archive toggle in the top bar) is a flat,
   responsive **grid/gallery** of `ArchivedCard`s, NOT the column layout. Cards are
   read-only; each shows a small uppercase **column-name label** (the column it lived
@@ -442,7 +454,14 @@ Familiar to Asana users (board reference), but with our color rules.
   tag/assignee/health are filters, not search. Filters apply to both the board and the
   archive grid (archive ignores the completion filter).
 
-Do NOT build: top nav tabs (Timeline/Calendar/etc.), Portfolios/Goals/Inbox,
+**Views (decided 2026-08-04, reversing the earlier "no view tabs" call):** the board gets
+**three** — **List, Board, Calendar** — switched from a toggle in the toolbar. Board and
+Calendar are built; List is next. All three share ONE filter predicate
+(`utils/cardFilters`) so a filter can't work on one view and not another. The view is
+remembered per board in localStorage and mirrored to `?view=` so a link carries it.
+**Timeline is still out** — it needs start dates, which we don't have.
+
+Do NOT build: Portfolios/Goals/Inbox,
 My Tasks, premium prompts, mobile-responsive layout.
 
 ---
@@ -785,6 +804,6 @@ All route handlers try/catch → central error middleware; error shape
   transition; (2) Optimization Note assistant — format a buyer's note + suggest health/
   follow-up; (3) Account Health summary — summarize a card's comment history. All would
   run server-side; design lives in SPEC.md / git history.
-- Out of scope (Phase 1): Timeline/Calendar/Dashboard analytics, automation rules,
+- Out of scope (Phase 1): Timeline/Dashboard analytics, automation rules,
   notifications, mobile layout, cross-board My Tasks, @mentions, activity feed.
 ```

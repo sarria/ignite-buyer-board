@@ -4,7 +4,10 @@ import {
   Box, Typography, CircularProgress, TextField,
   Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider, Skeleton,
   Checkbox, ListItemText, InputBase, Button,
+  ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
+import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -19,6 +22,8 @@ import { arrayMove, SortableContext, horizontalListSortingStrategy } from '@dnd-
 import BoardColumn from '../components/Board/BoardColumn';
 import BoardCard from '../components/Board/BoardCard';
 import ArchivedGrid from '../components/Board/ArchivedGrid';
+import CalendarView from '../components/Board/CalendarView';
+import { cardMatchesFilters, matchesCompletion } from '../utils/cardFilters';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard, updateBoard } from '../api/boards';
 import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
@@ -117,6 +122,13 @@ export default function BoardPage() {
   const [drawerCardId, setDrawerCardId] = useState(() => searchParams.get('card'));
   const [didDrag, setDidDrag] = useState(false);
   const [templates, setTemplates] = useState(cachedInit?.templates ?? []);
+  // Which view: 'board' | 'calendar' (list is next). Mirrored to ?view= so a link
+  // shares the view, and remembered per board so switching away and back is sticky.
+  const [view, setView] = useState(() => {
+    const fromUrl = searchParams.get('view');
+    if (fromUrl === 'calendar' || fromUrl === 'board') return fromUrl;
+    try { return localStorage.getItem(`board.view.${id}`) || 'board'; } catch { return 'board'; }
+  });
   const [showArchived, setShowArchived] = useState(false);
   const [archivedLoaded, setArchivedLoaded] = useState(cachedInit?.archivedLoaded ?? false);
   const [loadingArchived, setLoadingArchived] = useState(false);
@@ -186,6 +198,17 @@ export default function BoardPage() {
   }, [id]);
 
   // Keep the cache in sync with the live board state so the next visit is instant.
+  // Persist the view per board, and keep ?view= in sync (replace, so switching views
+  // doesn't stack history entries the back button has to walk through).
+  useEffect(() => {
+    try { localStorage.setItem(`board.view.${id}`, view); } catch { /* ignore */ }
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (view === 'board') next.delete('view'); else next.set('view', view);
+      return next;
+    }, { replace: true });
+  }, [view, id, setSearchParams]);
+
   // Guard on board._id === id: during a board→board switch the id dep changes a
   // render before the state does, and we must not write the old board under the new key.
   useEffect(() => {
@@ -316,23 +339,25 @@ export default function BoardPage() {
     [cards]
   );
 
+  // One filter object, one predicate (utils/cardFilters) for every view — board,
+  // archive grid and calendar. Duplicating it per view is how a filter silently stops
+  // working on one of them.
+  const filters = useMemo(
+    () => ({ assignee: filterAssignee, health: filterHealth, tags: filterTags, search, healthField }),
+    [filterAssignee, filterHealth, filterTags, search, healthField]
+  );
+
+  // Active (non-archived) cards passing the toolbar filters — what the board columns and
+  // the calendar both draw from.
+  const visibleCards = useMemo(
+    () => cards.filter(card => !card.isArchived
+      && matchesCompletion(card, completedFilter)
+      && cardMatchesFilters(card, filters)),
+    [cards, completedFilter, filters]
+  );
+
   const cardsByColumn = useMemo(() => {
-    const filtered = cards.filter(card => {
-      if (showArchived ? !card.isArchived : card.isArchived) return false;
-      // Completion filter (active board only; archive view shows everything).
-      if (!showArchived) {
-        if (completedFilter === 'incomplete' && card.isCompleted) return false;
-        if (completedFilter === 'completed' && !card.isCompleted) return false;
-      }
-      if (filterAssignee && card.assigneeId?.toString() !== filterAssignee) return false;
-      if (filterHealth && healthField) {
-        const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
-        if (fv?.valueEnum !== filterHealth) return false;
-      }
-      if (filterTags.length && !filterTags.some(t => card.tags?.includes(t))) return false;
-      if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
+    const filtered = showArchived ? [] : visibleCards;
     const map = {};
     columns.forEach(col => { map[col._id] = []; });
     filtered.forEach(card => {
@@ -340,24 +365,14 @@ export default function BoardPage() {
       if (map[key]) map[key].push(card);
     });
     return map;
-  }, [cards, columns, filterAssignee, filterHealth, filterTags, completedFilter, search, healthField, showArchived]);
+  }, [visibleCards, columns, showArchived]);
 
   // Archive view is a flat grid (not grouped by column). Same filters as the board
   // minus the completion filter — the archive shows complete + incomplete together.
   const archivedCards = useMemo(() => {
     if (!showArchived) return [];
-    return cards.filter(card => {
-      if (!card.isArchived) return false;
-      if (filterAssignee && card.assigneeId?.toString() !== filterAssignee) return false;
-      if (filterHealth && healthField) {
-        const fv = card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString());
-        if (fv?.valueEnum !== filterHealth) return false;
-      }
-      if (filterTags.length && !filterTags.some(t => card.tags?.includes(t))) return false;
-      if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
-  }, [showArchived, cards, filterAssignee, filterHealth, filterTags, search, healthField]);
+    return cards.filter(card => card.isArchived && cardMatchesFilters(card, filters));
+  }, [showArchived, cards, filters]);
 
   const columnNameById = useMemo(
     () => Object.fromEntries(columns.map(c => [c._id?.toString(), c.name])),
@@ -479,6 +494,24 @@ export default function BoardPage() {
           </FormControl>
         )}
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {/* View switcher. Hidden in the archive view, which is its own flat grid and
+              has no calendar equivalent. List is next. */}
+          {!showArchived && (
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={view}
+              onChange={(_, v) => { if (v) setView(v); }}
+              sx={{ mr: 0.5, '& .MuiToggleButton-root': { px: 1.25, py: 0.375, textTransform: 'none', border: 0 } }}
+            >
+              <ToggleButton value="board">
+                <ViewKanbanOutlinedIcon sx={{ fontSize: 16, mr: 0.5 }} /> Board
+              </ToggleButton>
+              <ToggleButton value="calendar">
+                <CalendarMonthOutlinedIcon sx={{ fontSize: 16, mr: 0.5 }} /> Calendar
+              </ToggleButton>
+            </ToggleButtonGroup>
+          )}
           <Tooltip title={showArchived ? 'Hide archived cards' : 'Show archived cards'}>
             <span>
               <IconButton
@@ -541,8 +574,16 @@ export default function BoardPage() {
         </Box>
       )}
 
-      {/* Board */}
-      {showArchived ? (
+      {/* Board / Calendar / (archive grid) */}
+      {!showArchived && view === 'calendar' ? (
+        <CalendarView
+          cards={visibleCards}
+          fields={fields}
+          users={users}
+          selectedCardId={drawerCardId}
+          onCardClick={card => openCard(card._id)}
+        />
+      ) : showArchived ? (
         <ArchivedGrid
           cards={archivedCards}
           fields={fields}

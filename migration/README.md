@@ -40,11 +40,11 @@ Known boards:
 | The A Team (Team Rachel) | `1156457376337923` |
 | The Dream Team (Team Conrad) | `1205337491932114` |
 | Team Kathy | `1208888075650797` |
+| Team T Tots (Team Travis) | `1205337491932125` |
 
-> **Team T Tots is not findable** in the `townsquareignite.com` workspace (checked
-> 2026-08-03: full project list, all 7 "team"-named boards, and Asana typeahead for
-> `tots`/`tater`). Either it's named differently or the `ASANA_PAT` user isn't a member.
-> Get the URL from someone who can open it.
+> Careful: T Tots is `…932125` and Dream Team is `…932114` — one digit apart. Paste, don't type.
+> (T Tots wasn't visible to the `ASANA_PAT` user until 2026-08-04; if a board can't be
+> found, that's usually project membership rather than a wrong name.)
 
 ---
 
@@ -100,6 +100,11 @@ Decisions for the known boards (confirmed 2026-08-03):
 | The A Team (Team Rachel) | `Cancelled Clients`, `Completed Campaigns` | `Duplicate Task Board` |
 | The Dream Team (Team Conrad) | `Completed` | — |
 | Team Kathy | `Completed`, `Cancelled Clients` | `Template / Example` |
+| Team T Tots (Team Travis) | `Completed`, `Cancelled Clients` | `Template / Example` |
+
+T Tots has 13 columns including two that aren't workflow stages — `University of Alabama`
+(one client) and `OOO Section`. Left active by default; decide at the prompt whether
+buyers still work out of them.
 
 `Template / Example` holds Asana task templates, which we don't import (still in
 *Planned*) — left in, they'd become ordinary cards.

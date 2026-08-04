@@ -102,8 +102,11 @@ export function parseTyped(text) {
 
 // The 6x7 grid a month is drawn on, including the adjacent-month days that pad it.
 // Built in UTC so a DST boundary can't drop or duplicate a day.
-export function monthGrid(year, month) {
-  const startDow = new Date(Date.UTC(year, month, 1)).getUTCDay();
+// `weekStartsOn`: 0 = Sunday (the date picker, matching Asana's picker), 1 = Monday
+// (the calendar view, matching Asana's calendar). Asana itself differs between the two.
+export function monthGrid(year, month, weekStartsOn = 0) {
+  const dow = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const startDow = (dow - weekStartsOn + 7) % 7;
   return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(Date.UTC(year, month, 1 - startDow + i));
     return {
