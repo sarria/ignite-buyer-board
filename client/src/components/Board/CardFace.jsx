@@ -6,7 +6,7 @@ import SellIcon from '@mui/icons-material/Sell';
 import LinkIcon from '@mui/icons-material/Link';
 import { tagColor } from '../../utils/tagColor';
 import { userColor } from '../../utils/userColor';
-import { formatDue, isOverdue } from '../../utils/dueDate';
+import { formatDueRelative, dueExact, isOverdue, isToday } from '../../utils/dueDate';
 
 const HEALTH_COLORS = {
   'Good': '#4caf50',
@@ -36,6 +36,7 @@ export default function CardFace({ card, fields = [], users = [] }) {
   const subtaskDone = card.subtaskDone || 0;
   const commentCount = card.commentCount || 0;
   const overdue = isOverdue(card.dueDate);
+  const dueToday = isToday(card.dueDate);
   // Legacy cards hold only an advertiserId — they're still linked, so count both
   // (same test LuminaPanel uses). `name` is the display copy stored on the link, so
   // the tooltip can name the campaign without a Lumina round-trip per card.
@@ -93,9 +94,17 @@ export default function CardFace({ card, fields = [], users = [] }) {
             </Tooltip>
           )}
           {card.dueDate && (
-            <Typography variant="caption" color={overdue ? 'error' : 'text.secondary'} fontWeight={overdue ? 700 : 400}>
-              {formatDue(card.dueDate)}
-            </Typography>
+            /* Relative label ("Today", "in 3 days") for scanning; the exact date on
+               hover, since a relative label alone drops information. */
+            <Tooltip title={dueExact(card.dueDate)}>
+              <Typography
+                variant="caption"
+                color={overdue ? 'error' : 'text.secondary'}
+                fontWeight={overdue || dueToday ? 700 : 400}
+              >
+                {formatDueRelative(card.dueDate)}
+              </Typography>
+            </Tooltip>
           )}
         </Box>
 

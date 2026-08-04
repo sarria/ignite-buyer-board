@@ -38,6 +38,45 @@ export function formatDue(value) {
   return `${MONTHS[m - 1]} ${d}${y === thisYear ? '' : `, ${y}`}`;
 }
 
+// Whole days between two 'YYYY-MM-DD' dates. Both sides go through Date.UTC, so a DST
+// boundary in between can't make it 23 or 25 hours and round to the wrong day.
+const utcMs = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+};
+export const dayDiff = (isoA, isoB) => Math.round((utcMs(isoA) - utcMs(isoB)) / 86400000);
+
+// 'Today' / 'Tomorrow' / 'in 3 days' / 'Yesterday' / '4 days ago', falling back to the
+// plain date. The relative window stops at a week: past that, "in 23 days" is harder to
+// act on than "Aug 27", and a buyer scanning a column wants the date.
+//
+// ALWAYS pair this with `dueExact()` in a tooltip/title — a relative label is easier to
+// scan but drops information, and someone will need the actual date.
+const RELATIVE_WINDOW = 6;
+
+export function formatDueRelative(value) {
+  const iso = toInput(value);
+  if (!iso) return '';
+  const diff = dayDiff(iso, todayInput());
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  if (diff > 1 && diff <= RELATIVE_WINDOW) return `in ${diff} days`;
+  if (diff < -1 && diff >= -RELATIVE_WINDOW) return `${-diff} days ago`;
+  return formatDue(value);
+}
+
+// The unambiguous long form, for tooltips: 'Thursday, June 4, 2026'.
+// timeZone:'UTC' is what keeps toLocaleDateString honest on a UTC-midnight date.
+export function dueExact(value) {
+  const iso = toInput(value);
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
 // Accepts what someone actually types: 6/4/26, 06/04/2026, 2026-06-04.
 // Returns 'YYYY-MM-DD' or null. Rejects anything that isn't a real date (2/30),
 // rather than silently rolling it over the way `new Date()` would.

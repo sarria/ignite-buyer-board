@@ -5,7 +5,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import {
-  toInput, todayInput, formatDue, isOverdue, parseTyped, monthGrid, monthLabel,
+  toInput, todayInput, formatDueRelative, dueExact, isOverdue, isToday,
+  parseTyped, monthGrid, monthLabel,
 } from '../../utils/dueDate';
 
 // Asana's due-date control: the row is just a calendar glyph + "Jun 4" + a clear ×,
@@ -52,7 +53,8 @@ function Calendar({ selected, onPick }) {
         ))}
         {monthGrid(view.y, view.m).map(({ iso, day, outside }) => {
           const isSelected = iso === selected;
-          const isToday = iso === today;
+          // Named to avoid shadowing the imported isToday() helper.
+          const isTodayCell = iso === today;
           return (
             <Box
               key={iso}
@@ -64,8 +66,8 @@ function Calendar({ selected, onPick }) {
                 bgcolor: isSelected ? 'primary.main' : 'transparent',
                 color: isSelected ? 'primary.contrastText'
                   : outside ? 'text.disabled' : 'text.primary',
-                fontWeight: isSelected || isToday ? 700 : 400,
-                boxShadow: !isSelected && isToday
+                fontWeight: isSelected || isTodayCell ? 700 : 400,
+                boxShadow: !isSelected && isTodayCell
                   ? theme => `inset 0 0 0 1px ${theme.palette.primary.main}`
                   : 'none',
                 '&:hover': { bgcolor: isSelected ? 'primary.dark' : 'action.hover' },
@@ -117,9 +119,15 @@ export default function DueDatePicker({ value, onChange, readOnly = false }) {
           sx={{ fontSize: 16, color: overdue ? 'error.main' : 'text.secondary' }}
         />
         {value ? (
-          <Typography variant="body2" color={overdue ? 'error' : 'text.primary'} fontWeight={overdue ? 600 : 400}>
-            {formatDue(value)}
-          </Typography>
+          <Tooltip title={dueExact(value)}>
+            <Typography
+              variant="body2"
+              color={overdue ? 'error' : 'text.primary'}
+              fontWeight={overdue || isToday(value) ? 600 : 400}
+            >
+              {formatDueRelative(value)}
+            </Typography>
+          </Tooltip>
         ) : (
           <Typography variant="body2" color="text.secondary">
             {readOnly ? 'No due date' : 'Set due date'}

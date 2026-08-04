@@ -335,10 +335,10 @@ lists scroll, never the page (mirrors Asana).
   in) since the grid isn't grouped, and the drawer shows it too. Honors the
   search/assignee/health filters; shows complete + incomplete together (no completion
   filter in archive view).
-- **DueDatePicker** — Asana's due-date control: the row is a calendar glyph + `Jun 4` +
-  a clear ×, and clicking opens a popover with a typed field (`6/4/26`, `2026-06-04`),
-  a month grid, and Clear. Replaced a raw `<input type="date">`. Emits `'YYYY-MM-DD'`
-  or `null`, the shape the API already took.
+- **DueDatePicker** — Asana's due-date control: the row is a calendar glyph + the due
+  label + a clear ×, and clicking opens a popover with a typed field (`6/4/26`,
+  `2026-06-04`), a month grid, and Clear. Replaced a raw `<input type="date">`. Emits
+  `'YYYY-MM-DD'` or `null`, the shape the API already took.
 - **CardDrawer** — right drawer. Mark complete toggle, Status/Assignee/Due, Tags
   (combobox), custom fields (only those with a value, "+ Add field" to reveal more).
   Field inputs are **borderless until hover** (border on hover, blue on focus — Asana).
@@ -405,6 +405,13 @@ Familiar to Asana users (board reference), but with our color rules.
   PREVIOUS day, which is exactly how every board card came to show due dates a day early
   (America/New_York rendered "Jun 3" for Asana's "Jun 4"). Overdue means strictly BEFORE
   today's local date — a card due today is not overdue.
+- **Due dates read as relative labels within a week**: `Yesterday` / `Today` /
+  `Tomorrow` / `in 3 days` / `4 days ago`, falling back to `Aug 11` (and `Jun 30, 2025`
+  out of year) beyond ±6 days — past a week "in 23 days" is harder to act on than the
+  date. `formatDueRelative()` on both the board card and the drawer; **always paired with
+  `dueExact()` in a tooltip** (`Thursday, June 4, 2026`), because a relative label is
+  easier to scan but drops information. Overdue stays red; today is bold, not red — it
+  isn't late yet, and red is reserved for errors.
 - Completed = green ✓ + **dimmed** title, never strikethrough (Asana does the same, and
   many subtask titles are short dates like `5/8` that a line through the middle makes
   hard to read). Applies to card faces, the drawer title, and subtasks — keep them
