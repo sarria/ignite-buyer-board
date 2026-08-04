@@ -275,9 +275,12 @@ export default function CalendarView({
               sx={{
                 borderRight: 1, borderBottom: 1, borderColor: 'divider',
                 p: 0.5, minWidth: 0,
-                // Explicit flex column + overflow hidden: cards stack predictably and a
-                // busy day can't spill over the following week's cells.
-                display: 'flex', flexDirection: 'column', gap: 0.375, overflow: 'hidden',
+                // Explicit flex column so cards stack predictably. NOT overflow:hidden —
+                // "Show more" has to make the week ROW grow (gridAutoRows max-content),
+                // and clipping an expanded day would hide cards outright, which is worse
+                // than a tall row. Spilling was a symptom of the card-collapse bug, fixed
+                // by the card's own minHeight.
+                display: 'flex', flexDirection: 'column', gap: 0.375,
                 bgcolor: outside ? 'action.hover' : 'transparent',
               }}
             >
@@ -310,13 +313,21 @@ export default function CalendarView({
                 />
               ))}
 
-              {hidden > 0 && (
+              {/* "2 more" ⇄ "Show less", as Asana does: a quiet grey link, and expanding
+                  grows the whole week ROW rather than scrolling or clipping the cell
+                  (gridAutoRows max-content is what lets the row stretch). Rendered on
+                  card count, not on `hidden`, so it survives being expanded. */}
+              {dayCards.length > PER_DAY && (
                 <Typography
                   variant="caption"
-                  onClick={() => setExpanded(p => ({ ...p, [iso]: true }))}
-                  sx={{ px: 0.5, cursor: 'pointer', color: 'primary.main', fontWeight: 600, flexShrink: 0 }}
+                  onClick={() => setExpanded(p => ({ ...p, [iso]: !p[iso] }))}
+                  sx={{
+                    px: 0.5, py: 0.25, cursor: 'pointer', flexShrink: 0,
+                    color: 'text.secondary',
+                    '&:hover': { color: 'text.primary', textDecoration: 'underline' },
+                  }}
                 >
-                  +{hidden} more
+                  {expanded[iso] ? 'Show less' : `${hidden} more`}
                 </Typography>
               )}
             </Box>

@@ -341,8 +341,11 @@ lists scroll, never the page (mirrors Asana).
   completion separately, since the archive view ignores completion.
 - **CalendarView** — month calendar of cards by **due date**, mirroring Asana's Calendar.
   Cards are Asana-height: assignee avatar, 2-line title, then a meta row (Lumina link
-  glyph, subtask + comment counts, tag dots). `+N more` per day expands that day, today's
-  number is a filled blue circle, adjacent-month cells are shaded. Weeks start **Monday**
+  glyph, subtask + comment counts, tag dots). A day with more than 3 cards shows a quiet grey
+  **`N more` / `Show less`** toggle (Asana's wording and weight, not a bold blue link);
+  expanding grows the whole **week row** via `gridAutoRows: max-content` rather than
+  scrolling or clipping the cell — the cell must NOT be `overflow:hidden`, or an expanded
+  day hides cards outright. Today's number is a filled blue circle, adjacent-month cells are shaded. Weeks start **Monday**
   here while `DueDatePicker` starts **Sunday** — deliberate, Asana itself differs between
   its calendar and its date picker.
   **Three signals, three channels — don't collapse them into colour:** the card *fill* is
