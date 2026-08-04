@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Box, Typography, Button, Popover, Chip, Select, MenuItem, FormControl,
+  Box, Typography, Button, Popover, Menu, Chip, Select, MenuItem, FormControl,
   IconButton, Badge, Divider, Checkbox, ListItemText, Tooltip,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -237,12 +237,15 @@ export default function BoardFilters({
         </Box>
       </Popover>
 
-      <Popover
+      {/* Menu, NOT Popover: MenuItem needs the MenuListContext that Menu provides, and
+          a Popover full of MenuItems throws "MenuListContext is missing" on open. */}
+      <Menu
         open={!!addAnchor}
         anchorEl={addAnchor}
         onClose={() => setAddAnchor(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { mt: 0.5, minWidth: 200 } } }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{ paper: { sx: { minWidth: 200, maxHeight: 360 } } }}
       >
         {addableKeys.map(d => (
           <MenuItem
@@ -253,7 +256,7 @@ export default function BoardFilters({
             {d.label}
           </MenuItem>
         ))}
-      </Popover>
+      </Menu>
     </>
   );
 }
