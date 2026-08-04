@@ -144,9 +144,11 @@ Apply runs write their own timestamped report — that file is the only record o
 undo, so don't delete it. Revert only touches cards that run linked, and only if the link
 still matches, so links buyers attached by hand survive.
 
-Baseline for comparison — Rachel's board, 2026-08-03: 2,412 cards, 484 carrying an
-identifier, **390 linked** (354 pasted URL, 33 description WO, 3 title WO). Skipped 94:
-88 `wo-not-found`, 4 `url-unresolved`, 2 ambiguous.
+Baseline for comparison — Rachel's board, 2026-08-03, measured while still pointing at
+**release**: 2,412 cards, 484 carrying an identifier, 390 linked (354 pasted URL, 33
+description WO, 3 title WO); skipped 94. Expect **better on production** — release's data
+stopped ~2026-05-22, so every recent campaign counted as `url-unresolved` or
+`wo-not-found`. Re-run any board that was matched before the 2026-08-03 switch.
 
 ---
 
@@ -214,7 +216,7 @@ Attachments already do the right thing: a re-seed keeps user-uploaded files (nat
 |---|---|
 | `querySrv ECONNREFUSED` | Flaky local DNS. Set `DNS_SERVERS=1.1.1.1,8.8.8.8`. Never in prod. |
 | `Lumina 429` / `lookup-failed` | Throttling. Re-run with `--pace=400`. |
-| Lots of `url-unresolved`, all recent campaigns | **`LUMINA_API_BASE` points at `release11`, whose data looks frozen ~2026-05-22.** Line items created after that return `{found:false}`, so they can't be matched, viewed, or attached. Not a data problem — switch to the production base and re-run. |
+| Lots of `url-unresolved`, all recent campaigns | Check `LUMINA_API_BASE` is **production** (`townsquarelumina.com`), not `release11` — release's data was frozen ~2026-05-22, so anything newer returns `{found:false}`. Not a data problem. Note prod needs its own token; changing the base alone 401s everything. |
 | Broken images after a re-import | Re-seeded from a stale export after the S3 files were deleted. Re-run `asana-migrate.js`. |
 | `Archive the board before deleting it` (409) | Working as designed (rule 7). Archive first. |
 | `Export file not found` | Path is resolved relative to `migration/`. Pass just the filename. |

@@ -16,7 +16,11 @@
 //      path; the list is only for the attach dropdown.
 
 const BASE = process.env.LUMINA_API_BASE
-  || 'https://release11.townsquarelumina.com/lumina/orders/api/ignite/ext';
+  // Default to PRODUCTION. It used to default to release11, whose data was frozen
+  // ~2026-05-22 — every line item created after that answered {found:false}, so new
+  // campaigns silently couldn't be viewed or attached. A missing env var must not
+  // land you back in that state. Note release and production need DIFFERENT tokens.
+  || 'https://townsquarelumina.com/lumina/orders/api/ignite/ext';
 const TOKEN = process.env.LUMINA_API_TOKEN;
 
 // Web (not API) host. Lumina hands us a relative `deepLinkPath` per line item, so

@@ -244,21 +244,16 @@ S3_PREFIX=buyer-board/
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 # Lumina SEM API (read-only). TOKEN IS SERVER-ONLY — never expose to the browser.
-LUMINA_API_BASE=https://release11.townsquarelumina.com/lumina/orders/api/ignite/ext
-                           # ⚠ release11 is a RELEASE env and its data looks frozen
-                           #   ~2026-05-22: of the line-item ids buyers pasted into
-                           #   cards, every one created on/before 2026-05-22 resolves
-                           #   and every one after it returns {found:false} — a clean
-                           #   date split, zero overlap (measured 2026-08-03). So new
-                           #   campaigns can't be viewed OR attached. Lumina (Stephen
-                           #   Alba) confirmed: "you are hitting release, switch to
-                           #   production". Note we already deep-link to prod
-                           #   (LUMINA_WEB_BASE) — only the READ base is stale.
-                           # PROD = https://townsquarelumina.com/lumina/orders/api/ignite/ext
-                           #   (host + path verified; it answers with Lumina's own JSON
-                           #   error shape). BUT the release token 401s there — swapping
-                           #   the base ALONE breaks every /lumina/* call. Change both
-                           #   at once, then re-run migration/lumina-match.js.
+LUMINA_API_BASE=https://townsquarelumina.com/lumina/orders/api/ignite/ext
+                           # PRODUCTION (switched 2026-08-03). It used to point at
+                           #   release11, whose data was frozen ~2026-05-22: every
+                           #   pasted line-item id created on/before that date resolved
+                           #   and every one after returned {found:false} — a clean date
+                           #   split, zero overlap. New campaigns therefore couldn't be
+                           #   viewed OR attached, which is exactly what buyers work on.
+                           #   Release and production need DIFFERENT tokens: pointing the
+                           #   base at prod with a release token 401s everything. If you
+                           #   ever switch back, change BOTH.
 LUMINA_API_TOKEN=          # unset → /lumina/* returns 503, panel shows nothing
 LUMINA_WEB_BASE=https://townsquarelumina.com   # host prepended to Lumina's deepLinkPath
 # Asana (migration only)
