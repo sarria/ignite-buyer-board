@@ -178,6 +178,9 @@ Boards     GET /boards (each w/ columnCount + cardCount) · GET /boards/:id (boa
 Columns    GET/POST /boards/:id/columns · PUT /boards/:id/columns/reorder · PUT /columns/:id · DELETE /columns/:id
 Fields     GET/POST /boards/:id/fields · PUT /boards/:id/fields/reorder · PUT /fields/:id (name,type,options) · DELETE /fields/:id
 Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards/:id/cards
+           GET /boards/:id/card-counts → { cardId: {subtaskCount,subtaskDone,commentCount} }
+             (SEPARATE from listCards on purpose: ~2s on 2.4k cards, so the client fetches
+              it after first paint and merges it in — the board stays frame-first)
            PUT /boards/:id/cards/reorder
            GET /cards/:id (card+comments+subtasks) · PUT /cards/:id · DELETE(admin)
            PUT /cards/:id/move {columnId,position} · PUT /cards/:id/move-board {boardId,columnId}
@@ -327,7 +330,8 @@ lists scroll, never the page (mirrors Asana).
   sortable (so large archives render fast). Cards show: tag glyphs (colored `Sell`
   icons, name on hover), Health chip, title (dimmed + ✓ if completed),
   assignee avatar (per-user color), due date (red if overdue), subtask & comment counts,
-  and a brand-blue **link glyph when the card is linked to Lumina** (tooltip names the
+  and a brand-blue **link glyph when the card is linked to Lumina** (same glyph in the
+  calendar — one meaning, learned once) (tooltip names the
   campaign from the stored `lumina.name` — no per-card Lumina fetch on the board).
   Blue rather than muted like the counts: it's a property of the card, not a tally, so
   it reads at a glance when scanning a column for what still needs linking.
@@ -336,11 +340,23 @@ lists scroll, never the page (mirrors Asana).
   Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus
   completion separately, since the archive view ignores completion.
 - **CalendarView** — month calendar of cards by **due date**, mirroring Asana's Calendar.
-  Compact rows (assignee avatar, title, tag dots, Health as a **left edge** — no room for
-  the board's chip), `+N more` per day expands that day, today's number is a filled blue
-  circle, adjacent-month cells are shaded. Weeks start **Monday** here while
-  `DueDatePicker` starts **Sunday** — deliberate, Asana itself differs between its
-  calendar and its date picker.
+  Cards are Asana-height: assignee avatar, 2-line title, then a meta row (Lumina link
+  glyph, subtask + comment counts, tag dots). `+N more` per day expands that day, today's
+  number is a filled blue circle, adjacent-month cells are shaded. Weeks start **Monday**
+  here while `DueDatePicker` starts **Sunday** — deliberate, Asana itself differs between
+  its calendar and its date picker.
+  **Three signals, three channels — don't collapse them into colour:** the card *fill* is
+  "Color by" (Health / Column / None, persisted in localStorage), *Health* also holds the
+  left edge, and *Lumina-linked* is the *same blue link glyph as the board card*. Encoding
+  the Lumina link as a colour was considered and rejected: colour already means two things
+  here, and a third would be unlearnable — an icon reused from the board is learned once.
+  **"Color by" defaults to Health** because seeded columns are all the same default grey
+  (Asana sections have no colour), so Column only becomes useful once someone sets colours
+  in Board settings → Columns.
+  **Hovering a card slides in a complete button from the left** (width transition, so it
+  pushes rather than overlaps — Asana's behaviour) and it stays visible on completed
+  cards. The toggle is optimistic and rolls back on failure: a card that looks done but
+  isn't is worse than a click that visibly didn't take.
   **Cards with no due date can't be placed, so they're shown as a `No due date · N` count,
   never silently dropped** — on these boards most cards have no due date (Rachel's: 1,262
   of 2,423 do), so hiding them without saying so would badly mislead.

@@ -54,6 +54,40 @@ async function listCards(req, res) {
   res.json(cards);
 }
 
+// Subtask/comment counts for every card on a board, as { cardId: {...} }.
+//
+// A SEPARATE endpoint on purpose. Folding this into listCards added ~2s to Rachel's
+// 2,423 cards (two grouped aggregations over 7.7k subtasks and 20.4k comments), and the
+// board is deliberately frame-first — the client fetches this after the cards are on
+// screen and merges it in. Subtasks and comments carry no boardId, so the $in over card
+// ids is the only way to scope it.
+async function listCardCounts(req, res) {
+  const db = await getDb();
+  const boardId = new ObjectId(req.params.id);
+
+  const ids = (await db.collection('cards')
+    .find({ boardId }, { projection: { _id: 1 } }).toArray()).map(c => c._id);
+  if (!ids.length) return res.json({});
+
+  const [subs, comments] = await Promise.all([
+    db.collection('subtasks').aggregate([
+      { $match: { cardId: { $in: ids } } },
+      { $group: { _id: '$cardId', total: { $sum: 1 }, done: { $sum: { $cond: ['$isComplete', 1, 0] } } } },
+    ]).toArray(),
+    db.collection('comments').aggregate([
+      { $match: { cardId: { $in: ids } } },
+      { $group: { _id: '$cardId', total: { $sum: 1 } } },
+    ]).toArray(),
+  ]);
+
+  const out = {};
+  for (const s of subs) out[s._id] = { subtaskCount: s.total, subtaskDone: s.done, commentCount: 0 };
+  for (const c of comments) {
+    out[c._id] = { subtaskCount: 0, subtaskDone: 0, ...(out[c._id] || {}), commentCount: c.total };
+  }
+  res.json(out);
+}
+
 async function getCard(req, res) {
   const db = await getDb();
   const cardId = new ObjectId(req.params.id);
@@ -271,4 +305,4 @@ async function setFieldValues(req, res) {
   res.json(result);
 }
 
-module.exports = { listCards, getCard, createCard, updateCard, deleteCard, moveCard, moveCardToBoard, reorderCards, setFieldValues, addAttachment, removeAttachment };
+module.exports = { listCards, listCardCounts, getCard, createCard, updateCard, deleteCard, moveCard, moveCardToBoard, reorderCards, setFieldValues, addAttachment, removeAttachment };

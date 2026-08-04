@@ -28,6 +28,8 @@ router.put('/:id/fields/reorder', fieldCtrl.reorderFields);
 router.get('/:id/cards', cardCtrl.listCards);
 router.post('/:id/cards', cardCtrl.createCard);
 router.put('/:id/cards/reorder', cardCtrl.reorderCards);
+// Counts are their own call — see listCardCounts for why they aren't in listCards.
+router.get('/:id/card-counts', cardCtrl.listCardCounts);
 
 // Templates nested under board
 router.get('/:id/templates', templateCtrl.listTemplates);

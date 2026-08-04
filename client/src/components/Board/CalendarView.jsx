@@ -1,15 +1,23 @@
 import { useMemo, useState } from 'react';
-import { Box, Typography, IconButton, Button, Tooltip, Avatar, Chip } from '@mui/material';
+import {
+  Box, Typography, IconButton, Button, Tooltip, Avatar, Chip,
+  Select, MenuItem, FormControl,
+} from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
+import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
+import LinkIcon from '@mui/icons-material/Link';
 import { toInput, todayInput, monthGrid, monthLabel } from '../../utils/dueDate';
 import { tagColor } from '../../utils/tagColor';
 import { userColor } from '../../utils/userColor';
 
 // Month calendar of cards by DUE DATE, mirroring Asana's Calendar view. Cards without a
 // due date can't be placed, so they're surfaced as a count rather than silently dropped
-// — on these boards most cards have no due date, and a view that quietly hides 1,100
+// — on these boards most cards have no due date, and a view that quietly hides ~1,100
 // cards would be actively misleading.
 //
 // Weeks start MONDAY here (Asana's calendar does) even though DueDatePicker starts
@@ -22,62 +30,160 @@ const HEALTH_COLORS = {
   'Waiting on DCM': '#2196f3',
 };
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const PER_DAY = 3;   // before collapsing into "+N more"
+const PER_DAY = 3;                       // before collapsing into "+N more"
+const COLOR_BY_KEY = 'calendar.colorBy';
 
 const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 
-function CalendarCard({ card, fields, users, selected, onClick }) {
+function CalendarCard({ card, health, tint, users, selected, onClick, onToggleComplete }) {
   const assignee = users.find(u => u._id?.toString() === card.assigneeId?.toString());
-  const healthField = fields.find(f => f.name === 'Health' && f.type === 'enum');
-  const health = healthField
-    && card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString())?.valueEnum;
+  const done = !!card.isCompleted;
+  const linked = !!(card.lumina?.lineitemId || card.lumina?.advertiserId);
+  const subtaskCount = card.subtaskCount || 0;
+  const commentCount = card.commentCount || 0;
 
   return (
-    <Tooltip title={card.title} enterDelay={600}>
+    <Box
+      onClick={() => onClick(card)}
+      sx={{
+        display: 'flex', alignItems: 'flex-start', gap: 0.5,
+        px: 0.625, py: 0.5, mb: 0.375, borderRadius: 1.5, cursor: 'pointer',
+        bgcolor: tint || 'background.paper',
+        // Health as a left edge. Colour is already carrying "colour by" on the fill, so
+        // health gets the edge and Lumina gets an icon — three signals, three channels.
+        borderLeft: '3px solid',
+        borderLeftColor: health ? HEALTH_COLORS[health] : 'transparent',
+        boxShadow: selected
+          ? theme => `0 0 0 2px ${theme.palette.primary.main}`
+          : '0 1px 2px rgba(0,0,0,.08)',
+        '&:hover': { filter: 'brightness(0.97)' },
+        // Asana's move: the complete button slides in from the left on hover, pushing
+        // the content over, and slides back out. Width (not just opacity) is what makes
+        // it push rather than overlap.
+        '&:hover .cal-complete': { width: 18, opacity: 1, mr: 0.25 },
+      }}
+    >
       <Box
-        onClick={() => onClick(card)}
+        className="cal-complete"
         sx={{
-          display: 'flex', alignItems: 'center', gap: 0.5,
-          px: 0.5, py: 0.25, mb: 0.25, borderRadius: 0.75, cursor: 'pointer',
-          bgcolor: 'background.paper',
-          // Health as a left edge — the calendar has no room for the board's chip, but
-          // health is the thing buyers scan for.
-          borderLeft: '3px solid',
-          borderLeftColor: health ? HEALTH_COLORS[health] : 'divider',
-          boxShadow: selected
-            ? theme => `0 0 0 2px ${theme.palette.primary.main}`
-            : '0 1px 2px rgba(0,0,0,.10)',
-          '&:hover': { bgcolor: 'action.hover' },
+          width: done ? 18 : 0,
+          opacity: done ? 1 : 0,
+          mr: done ? 0.25 : 0,
+          overflow: 'hidden', flexShrink: 0,
+          transition: 'width .15s ease, opacity .15s ease, margin-right .15s ease',
         }}
       >
-        {card.isCompleted && <CheckCircleIcon sx={{ fontSize: 12, color: '#4caf50', flexShrink: 0 }} />}
-        {assignee && (
-          <Avatar sx={{ width: 16, height: 16, fontSize: 8, bgcolor: userColor(assignee), flexShrink: 0 }}>
+        <Tooltip title={done ? 'Mark incomplete' : 'Mark task complete'}>
+          <IconButton
+            size="small"
+            sx={{ p: 0, color: done ? '#4caf50' : 'text.secondary', '&:hover': { color: '#4caf50' } }}
+            onClick={(e) => { e.stopPropagation(); onToggleComplete?.(card); }}
+          >
+            {done
+              ? <CheckCircleIcon sx={{ fontSize: 16 }} />
+              : <CheckCircleOutlineIcon sx={{ fontSize: 16 }} />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {assignee && (
+        <Tooltip title={assignee.name}>
+          <Avatar sx={{ width: 18, height: 18, fontSize: 9, bgcolor: userColor(assignee), flexShrink: 0, mt: '1px' }}>
             {initials(assignee.name)}
           </Avatar>
-        )}
+        </Tooltip>
+      )}
+
+      <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography
           variant="caption"
-          noWrap
-          sx={{ flex: 1, minWidth: 0, color: card.isCompleted ? 'text.disabled' : 'text.primary' }}
+          sx={{
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden', lineHeight: 1.3,
+            color: done ? 'text.disabled' : 'text.primary',
+          }}
         >
           {card.title}
         </Typography>
-        {card.tags?.slice(0, 2).map(t => (
-          <Box key={t} sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: tagColor(t).dot, flexShrink: 0 }} />
-        ))}
+
+        {(linked || subtaskCount > 0 || commentCount > 0 || card.tags?.length > 0) && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+            {/* Same blue link glyph as the board card — one meaning, learned once. */}
+            {linked && (
+              <Tooltip title={card.lumina?.name ? `Lumina · ${card.lumina.name}` : 'Linked to Lumina'}>
+                <LinkIcon sx={{ fontSize: 13, color: 'primary.main' }} />
+              </Tooltip>
+            )}
+            {subtaskCount > 0 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.125 }}>
+                <CheckBoxOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                  {card.subtaskDone || 0}/{subtaskCount}
+                </Typography>
+              </Box>
+            )}
+            {commentCount > 0 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.125 }}>
+                <ChatBubbleOutlineIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                  {commentCount}
+                </Typography>
+              </Box>
+            )}
+            <Box sx={{ flex: 1 }} />
+            {card.tags?.slice(0, 3).map(t => (
+              <Tooltip key={t} title={t}>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: tagColor(t).dot, flexShrink: 0 }} />
+              </Tooltip>
+            ))}
+          </Box>
+        )}
       </Box>
-    </Tooltip>
+    </Box>
   );
 }
 
-export default function CalendarView({ cards, fields, users, selectedCardId, onCardClick }) {
+export default function CalendarView({
+  cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete,
+}) {
   const today = todayInput();
   const [view, setView] = useState(() => {
     const [y, m] = today.split('-').map(Number);
     return { y, m: m - 1 };
   });
   const [expanded, setExpanded] = useState({});   // iso -> true, per-day "show all"
+  // Column colours are all the seeded default until someone changes them, so Health —
+  // which has four real colours — is the useful default here.
+  const [colorBy, setColorBy] = useState(() => {
+    try { return localStorage.getItem(COLOR_BY_KEY) || 'health'; } catch { return 'health'; }
+  });
+  const setColorByPersisted = (v) => {
+    setColorBy(v);
+    try { localStorage.setItem(COLOR_BY_KEY, v); } catch { /* ignore */ }
+  };
+
+  const healthField = useMemo(
+    () => fields.find(f => f.name === 'Health' && f.type === 'enum'),
+    [fields]
+  );
+  const columnColor = useMemo(
+    () => Object.fromEntries(columns.map(c => [c._id?.toString(), c.color])),
+    [columns]
+  );
+
+  const healthOf = (card) => healthField
+    && card.fieldValues?.find(v => v.fieldId?.toString() === healthField._id?.toString())?.valueEnum;
+
+  // The fill. `alpha` on the source colour keeps it legible in both themes instead of
+  // hardcoding pastels that only work in light mode.
+  const tintOf = (card) => {
+    if (colorBy === 'none') return null;
+    const base = colorBy === 'column'
+      ? columnColor[card.columnId?.toString()]
+      : HEALTH_COLORS[healthOf(card)];
+    if (!base) return null;
+    return theme => alpha(base, theme.palette.mode === 'dark' ? 0.28 : 0.16);
+  };
 
   const { byDay, noDate } = useMemo(() => {
     const map = {};
@@ -99,8 +205,6 @@ export default function CalendarView({ cards, fields, users, selectedCardId, onC
     setView({ y, m: m - 1 });
   };
 
-  const grid = monthGrid(view.y, view.m, 1);
-
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', p: 2, pt: 1 }}>
       {/* Month nav */}
@@ -119,6 +223,17 @@ export default function CalendarView({ cards, fields, users, selectedCardId, onC
             <Chip size="small" variant="outlined" label={`No due date · ${noDate}`} />
           </Tooltip>
         )}
+        <FormControl size="small">
+          <Select
+            value={colorBy}
+            onChange={e => setColorByPersisted(e.target.value)}
+            sx={{ height: 30, fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0 } }}
+          >
+            <MenuItem value="health">Color: Health</MenuItem>
+            <MenuItem value="column">Color: Column</MenuItem>
+            <MenuItem value="none">Color: None</MenuItem>
+          </Select>
+        </FormControl>
       </Box>
 
       {/* Weekday header */}
@@ -135,11 +250,11 @@ export default function CalendarView({ cards, fields, users, selectedCardId, onC
       <Box
         sx={{
           flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(112px, auto)',
+          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(128px, auto)',
           borderTop: 1, borderLeft: 1, borderColor: 'divider',
         }}
       >
-        {grid.map(({ iso, day, outside }) => {
+        {monthGrid(view.y, view.m, 1).map(({ iso, day, outside }) => {
           const dayCards = byDay[iso] || [];
           const isToday = iso === today;
           const show = expanded[iso] ? dayCards : dayCards.slice(0, PER_DAY);
@@ -173,10 +288,12 @@ export default function CalendarView({ cards, fields, users, selectedCardId, onC
                 <CalendarCard
                   key={card._id}
                   card={card}
-                  fields={fields}
+                  health={healthOf(card)}
+                  tint={tintOf(card)}
                   users={users}
                   selected={selectedCardId === card._id}
                   onClick={onCardClick}
+                  onToggleComplete={onToggleComplete}
                 />
               ))}
 

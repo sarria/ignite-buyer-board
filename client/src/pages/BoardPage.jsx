@@ -26,7 +26,7 @@ import BoardFilters from '../components/Board/BoardFilters';
 import { cardMatchesFilters, matchesCompletion, EMPTY_FILTERS } from '../utils/cardFilters';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard, updateBoard } from '../api/boards';
-import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
+import { getCards, getCardCounts, createCard, moveCard, reorderCards, updateCard } from '../api/cards';
 import { reorderColumns } from '../api/columns';
 import { getTemplates, applyTemplate } from '../api/templates';
 import api from '../api/client';
@@ -196,6 +196,20 @@ export default function BoardPage() {
   }, [id]);
 
   // Keep the cache in sync with the live board state so the next visit is instant.
+  // Subtask/comment counts arrive AFTER the cards are on screen: they cost ~2s on a big
+  // board and the board is frame-first. A failure is silent — a missing count is a far
+  // smaller problem than a board that won't render.
+  useEffect(() => {
+    let cancelled = false;
+    getCardCounts(id)
+      .then((counts) => {
+        if (cancelled) return;
+        setCards(prev => prev.map(c => (counts[c._id] ? { ...c, ...counts[c._id] } : c)));
+      })
+      .catch(() => { /* counts are optional */ });
+    return () => { cancelled = true; };
+  }, [id]);
+
   // Persist the view per board, and keep ?view= in sync (replace, so switching views
   // doesn't stack history entries the back button has to walk through).
   useEffect(() => {
@@ -307,6 +321,23 @@ export default function BoardPage() {
     setCards(prev => [...prev, created]);
     openCard(created._id); // open the new card so the user can keep filling it in
   }, [id, openCard]);
+
+  // Optimistic complete/incomplete straight from a card face (calendar's hover check).
+  // Flipping locally first keeps the click instant; a failure rolls it back, since a
+  // card that looks done but isn't is worse than a click that visibly didn't take.
+  const handleToggleComplete = useCallback(async (card) => {
+    const next = !card.isCompleted;
+    const patch = { isCompleted: next, completedAt: next ? new Date().toISOString() : null };
+    setCards(prev => prev.map(c => (c._id === card._id ? { ...c, ...patch } : c)));
+    try {
+      const updated = await updateCard(card._id, { isCompleted: next });
+      setCards(prev => prev.map(c => (c._id === card._id ? { ...c, ...updated } : c)));
+    } catch {
+      setCards(prev => prev.map(c => (c._id === card._id
+        ? { ...c, isCompleted: card.isCompleted, completedAt: card.completedAt }
+        : c)));
+    }
+  }, []);
 
   const handleRenameBoard = useCallback(async (name) => {
     const updated = await updateBoard(id, { name });
@@ -506,8 +537,10 @@ export default function BoardPage() {
           cards={visibleCards}
           fields={fields}
           users={users}
+          columns={columns}
           selectedCardId={drawerCardId}
           onCardClick={card => openCard(card._id)}
+          onToggleComplete={handleToggleComplete}
         />
       ) : showArchived ? (
         <ArchivedGrid
