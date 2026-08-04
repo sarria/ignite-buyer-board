@@ -59,7 +59,7 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       │                            #   subtasks, comments, templates, users, uploads, client
 │       ├── components/
 │       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard,
-│       │   │                        #   ArchivedGrid, CalendarView
+│       │   │                        #   ArchivedGrid, CalendarView, BoardFilters
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
 │       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent,
 │       │   │                        #   Collapsible, DueDatePicker
@@ -331,6 +331,10 @@ lists scroll, never the page (mirrors Asana).
   campaign from the stored `lumina.name` — no per-card Lumina fetch on the board).
   Blue rather than muted like the counts: it's a property of the card, not a tally, so
   it reads at a glance when scanning a column for what still needs linking.
+- **BoardFilters** — the Filter button + popover (filter set listed under *Design*).
+  Rows are add/remove: a filter row shows because it has a value or because you added it.
+  Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus
+  completion separately, since the archive view ignores completion.
 - **CalendarView** — month calendar of cards by **due date**, mirroring Asana's Calendar.
   Compact rows (assignee avatar, title, tag dots, Health as a **left edge** — no room for
   the board's chip), `+N more` per day expands that day, today's number is a filled blue
@@ -448,11 +452,19 @@ Familiar to Asana users (board reference), but with our color rules.
 - Board toolbar (BoardPage top bar): slim row — board title (`h5`), a divider, then
   understated **filled "pill" controls** (search + filter selects) whose border appears
   only on hover/focus; filter selects render a muted `Label: Value` (no floating labels).
-  Filters: **Assignee**, **Health**, **Tags** (multi-select, match-any/OR; menu items
-  show the tag's `dot` color swatch + checkbox; "Clear tags" entry; shown only if the
-  board has tags), and **Tasks** (completion). Search matches **title only** —
-  tag/assignee/health are filters, not search. Filters apply to both the board and the
-  archive grid (archive ignores the completion filter).
+  **Filters live in ONE popover** behind a `Filter` button with a count badge
+  (`BoardFilters`), Asana's model — a row of inline pills worked at three filters and
+  would not at a dozen. Inside: **Tasks** (completion), **Quick filters** (Overdue, Due
+  today, No due date, **Not linked to Lumina**), **Tags** (multi-select, match-any/OR,
+  `dot` swatch per item), then add/remove rows via **+ Add filter**: Due date, Assignee,
+  Column, **every enum custom field** (not just Health), Lumina link, Created / Last
+  modified / Completed within 7/30/90 days. Search stays inline (constant use) and
+  matches **title only** — everything else is a filter, not search.
+  **Deliberately absent, because the data can't back them:** Asana's *Created by* (cards
+  have no `createdBy`) and *Just my tasks* (auth is a stub, so everyone IS the same dev
+  user). Both unlock with MSAL SSO; offering them now would lie.
+  All filters run through `utils/cardFilters` and apply to board, calendar and archive
+  grid alike (archive ignores completion).
 
 **Views (decided 2026-08-04, reversing the earlier "no view tabs" call):** the board gets
 **three** — **List, Board, Calendar** — switched from a toggle in the toolbar. Board and

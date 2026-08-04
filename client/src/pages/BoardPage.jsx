@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useTransition } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
-  Select, MenuItem, FormControl, Tooltip, IconButton, Chip, Divider, Skeleton,
-  Checkbox, ListItemText, InputBase, Button,
+  Tooltip, IconButton, Chip, Divider, Skeleton, InputBase, Button,
   ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
@@ -23,7 +22,8 @@ import BoardColumn from '../components/Board/BoardColumn';
 import BoardCard from '../components/Board/BoardCard';
 import ArchivedGrid from '../components/Board/ArchivedGrid';
 import CalendarView from '../components/Board/CalendarView';
-import { cardMatchesFilters, matchesCompletion } from '../utils/cardFilters';
+import BoardFilters from '../components/Board/BoardFilters';
+import { cardMatchesFilters, matchesCompletion, EMPTY_FILTERS } from '../utils/cardFilters';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard, updateBoard } from '../api/boards';
 import { getCards, createCard, moveCard, reorderCards } from '../api/cards';
@@ -32,7 +32,6 @@ import { getTemplates, applyTemplate } from '../api/templates';
 import api from '../api/client';
 import { useApp } from '../context/AppContext';
 import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
-import { tagColor } from '../utils/tagColor';
 import {
   getBoardSnapshot, setBoardSnapshot, clearBoardSnapshot,
   getUsersCache, setUsersCache,
@@ -109,10 +108,9 @@ export default function BoardPage() {
   const [loading, setLoading] = useState(!cachedInit);
   const [cardsLoading, setCardsLoading] = useState(!cachedInit);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [filterAssignee, setFilterAssignee] = useState('');
-  const [filterHealth, setFilterHealth] = useState('');
-  const [filterTags, setFilterTags] = useState([]); // match-any (OR)
+  // All filters in ONE object (see utils/cardFilters) so views, the popover and the
+  // predicate can't drift. Completion stays separate: the archive view ignores it.
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [completedFilter, setCompletedFilter] = useState('incomplete'); // incomplete | all | completed
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
@@ -330,21 +328,13 @@ export default function BoardPage() {
   }, [openCard]);
 
   const fields = board?.fields || [];
-  const healthField = fields.find(f => f.name === 'Health' && f.type === 'enum');
-  const healthOptions = healthField?.options || [];
+  // Every enum custom field is filterable, not just Health — boards carry others.
+  const enumFields = useMemo(() => fields.filter(f => f.type === 'enum'), [fields]);
 
   // All tags used on this board (for the toolbar Tag filter + drawer combobox).
   const allTags = useMemo(
     () => [...new Set(cards.flatMap(c => c.tags || []))].sort((a, b) => a.localeCompare(b)),
     [cards]
-  );
-
-  // One filter object, one predicate (utils/cardFilters) for every view — board,
-  // archive grid and calendar. Duplicating it per view is how a filter silently stops
-  // working on one of them.
-  const filters = useMemo(
-    () => ({ assignee: filterAssignee, health: filterHealth, tags: filterTags, search, healthField }),
-    [filterAssignee, filterHealth, filterTags, search, healthField]
   );
 
   // Active (non-archived) cards passing the toolbar filters — what the board columns and
@@ -393,13 +383,6 @@ export default function BoardPage() {
     '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
     '& .MuiSelect-select': { display: 'flex', alignItems: 'center', py: 0, pl: 1.5 },
   };
-  const filterLabel = (label, value) => (
-    <Box component="span" sx={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-      <Box component="span" sx={{ color: 'text.secondary' }}>{label}</Box>
-      {value && <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>: {value}</Box>}
-    </Box>
-  );
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default', overflow: 'hidden' }}>
       {/* Top bar */}
@@ -416,8 +399,8 @@ export default function BoardPage() {
         <Divider orientation="vertical" flexItem sx={{ mx: 0.75, my: 0.75 }} />
 
         <TextField
-          size="small" placeholder="Search tasks" value={search}
-          onChange={e => setSearch(e.target.value)}
+          size="small" placeholder="Search tasks" value={filters.search}
+          onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
           InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.disabled', mr: 0.75 }} /> }}
           sx={{
             width: 200,
@@ -426,73 +409,16 @@ export default function BoardPage() {
           }}
         />
 
-        <FormControl size="small">
-          <Select
-            value={filterAssignee} displayEmpty
-            onChange={e => setFilterAssignee(e.target.value)}
-            renderValue={v => filterLabel('Assignee', users.find(u => u._id === v)?.name)}
-            sx={{ ...controlSx, minWidth: 120 }}
-          >
-            <MenuItem value="">All assignees</MenuItem>
-            {users.map(u => <MenuItem key={u._id} value={u._id}>{u.name}</MenuItem>)}
-          </Select>
-        </FormControl>
-        {healthOptions.length > 0 && (
-          <FormControl size="small">
-            <Select
-              value={filterHealth} displayEmpty
-              onChange={e => setFilterHealth(e.target.value)}
-              renderValue={v => filterLabel('Health', v)}
-              sx={{ ...controlSx, minWidth: 110 }}
-            >
-              <MenuItem value="">All health</MenuItem>
-              {healthOptions.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-            </Select>
-          </FormControl>
-        )}
-        {allTags.length > 0 && (
-          <FormControl size="small">
-            <Select
-              multiple
-              value={filterTags}
-              displayEmpty
-              onChange={e => {
-                const val = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
-                setFilterTags(val.includes('__clear__') ? [] : val);
-              }}
-              renderValue={v => filterLabel('Tags', v.length ? (v.length === 1 ? v[0] : `${v.length}`) : null)}
-              MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
-              sx={{ ...controlSx, minWidth: 100, maxWidth: 220 }}
-            >
-              {filterTags.length > 0 && (
-                <MenuItem value="__clear__" sx={{ color: 'text.secondary' }} dense>
-                  Clear tags
-                </MenuItem>
-              )}
-              {allTags.map(tag => (
-                <MenuItem key={tag} value={tag} dense>
-                  <Checkbox size="small" checked={filterTags.includes(tag)} sx={{ p: 0.5, mr: 0.5 }} />
-                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: tagColor(tag).dot, flexShrink: 0, mr: 1 }} />
-                  <ListItemText primaryTypographyProps={{ variant: 'body2', noWrap: true }} primary={tag} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-        {!showArchived && (
-          <FormControl size="small">
-            <Select
-              value={completedFilter}
-              onChange={e => setCompletedFilter(e.target.value)}
-              renderValue={v => filterLabel('Tasks', v === 'all' ? 'All' : v === 'completed' ? 'Completed' : 'Incomplete')}
-              sx={{ ...controlSx, minWidth: 110 }}
-            >
-              <MenuItem value="incomplete">Incomplete</MenuItem>
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="completed">Completed</MenuItem>
-            </Select>
-          </FormControl>
-        )}
+        <BoardFilters
+          filters={filters}
+          onChange={setFilters}
+          completion={completedFilter}
+          onCompletionChange={setCompletedFilter}
+          users={users}
+          columns={columns}
+          enumFields={enumFields}
+          allTags={allTags}
+        />
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {/* View switcher. Hidden in the archive view, which is its own flat grid and
               has no calendar equivalent. List is next. */}
