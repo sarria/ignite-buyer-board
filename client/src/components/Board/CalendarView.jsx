@@ -47,7 +47,12 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
       onClick={() => onClick(card)}
       sx={{
         display: 'flex', alignItems: 'flex-start', gap: 0.5,
-        px: 0.625, py: 0.5, mb: 0.375, borderRadius: 1.5, cursor: 'pointer',
+        // flexShrink + minHeight are load-bearing, not decoration: the day cell is a flex
+        // column, and without them a card whose inner text reports no height (Firefox can
+        // do that with -webkit-box clamping) collapses and the next card draws on top of
+        // it. Height must never depend on the clamped title measuring correctly.
+        flexShrink: 0, minHeight: 34,
+        px: 0.625, py: 0.5, borderRadius: 1.5, cursor: 'pointer',
         bgcolor: tint || 'background.paper',
         // Health as a left edge. Colour is already carrying "colour by" on the fill, so
         // health gets the edge and Lumina gets an icon — three signals, three channels.
@@ -95,11 +100,16 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
       )}
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Two-line clamp with a hard maxHeight as the real guarantee — -webkit-box alone
+            isn't reliable cross-browser, and the fallback has to be "clipped at two
+            lines", never "no height at all". */}
         <Typography
           variant="caption"
+          component="div"
           sx={{
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-            overflow: 'hidden', lineHeight: 1.3,
+            overflow: 'hidden', lineHeight: 1.3, fontSize: 11.5,
+            maxHeight: '2.6em', minHeight: '1.3em', wordBreak: 'break-word',
             color: done ? 'text.disabled' : 'text.primary',
           }}
         >
@@ -250,7 +260,7 @@ export default function CalendarView({
       <Box
         sx={{
           flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(128px, auto)',
+          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(132px, max-content)',
           borderTop: 1, borderLeft: 1, borderColor: 'divider',
         }}
       >
@@ -265,10 +275,13 @@ export default function CalendarView({
               sx={{
                 borderRight: 1, borderBottom: 1, borderColor: 'divider',
                 p: 0.5, minWidth: 0,
+                // Explicit flex column + overflow hidden: cards stack predictably and a
+                // busy day can't spill over the following week's cells.
+                display: 'flex', flexDirection: 'column', gap: 0.375, overflow: 'hidden',
                 bgcolor: outside ? 'action.hover' : 'transparent',
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
                 <Typography
                   variant="caption"
                   sx={{
@@ -301,7 +314,7 @@ export default function CalendarView({
                 <Typography
                   variant="caption"
                   onClick={() => setExpanded(p => ({ ...p, [iso]: true }))}
-                  sx={{ px: 0.5, cursor: 'pointer', color: 'primary.main', fontWeight: 600 }}
+                  sx={{ px: 0.5, cursor: 'pointer', color: 'primary.main', fontWeight: 600, flexShrink: 0 }}
                 >
                   +{hidden} more
                 </Typography>
