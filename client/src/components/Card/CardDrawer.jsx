@@ -28,6 +28,7 @@ import Linkify from '../../utils/linkify';
 import RichContent from '../common/RichContent';
 import RichTextField from '../common/RichTextField';
 import Collapsible from '../common/Collapsible';
+import DueDatePicker from '../common/DueDatePicker';
 import { tagSolid } from '../../utils/tagColor';
 
 const DRAWER_WIDTH_DEFAULT = 560;
@@ -532,13 +533,10 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             </FieldRow>
 
             <FieldRow label="Due date">
-              <TextField
-                size="small"
-                type="date"
-                fullWidth
-                value={card.dueDate ? new Date(card.dueDate).toISOString().split('T')[0] : ''}
-                onChange={e => saveField({ dueDate: e.target.value || null })}
-                slotProps={{ inputLabel: { shrink: true } }}
+              <DueDatePicker
+                value={card.dueDate}
+                readOnly={readOnly}
+                onChange={v => saveField({ dueDate: v })}
               />
             </FieldRow>
 

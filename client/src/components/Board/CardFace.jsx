@@ -6,6 +6,7 @@ import SellIcon from '@mui/icons-material/Sell';
 import LinkIcon from '@mui/icons-material/Link';
 import { tagColor } from '../../utils/tagColor';
 import { userColor } from '../../utils/userColor';
+import { formatDue, isOverdue } from '../../utils/dueDate';
 
 const HEALTH_COLORS = {
   'Good': '#4caf50',
@@ -25,10 +26,6 @@ function getInitials(name = '') {
   return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 }
 
-function isOverdue(dueDate) {
-  if (!dueDate) return false;
-  return new Date(dueDate) < new Date();
-}
 
 // Presentational card contents shared by BoardCard (draggable) and ArchivedCard.
 export default function CardFace({ card, fields = [], users = [] }) {
@@ -97,7 +94,7 @@ export default function CardFace({ card, fields = [], users = [] }) {
           )}
           {card.dueDate && (
             <Typography variant="caption" color={overdue ? 'error' : 'text.secondary'} fontWeight={overdue ? 700 : 400}>
-              {new Date(card.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {formatDue(card.dueDate)}
             </Typography>
           )}
         </Box>

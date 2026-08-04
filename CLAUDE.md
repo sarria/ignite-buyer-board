@@ -60,7 +60,8 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       ├── components/
 │       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
-│       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent, Collapsible
+│       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent,
+│       │   │                        #   Collapsible, DueDatePicker
 │       │   └── settings/            # LuminaFieldPicker (shared by the global + board pickers)
 │       ├── context/                 # AppContext (theme light/dark)
 │       ├── pages/                   # BoardListPage (dashboard), BoardPage,
@@ -68,7 +69,7 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       │   │                        #   AdminLuminaFieldsPage
 │       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab, LuminaTab
 │       ├── utils/                   # tagColor, userColor, linkify, lastBoard,
-│       │                            #   boardCache, luminaFields
+│       │                            #   boardCache, luminaFields, dueDate
 │       ├── theme.js                 # light/dark MUI themes
 │       ├── App.jsx                  # router + fixed app-shell layout
 │       └── main.jsx
@@ -334,6 +335,10 @@ lists scroll, never the page (mirrors Asana).
   in) since the grid isn't grouped, and the drawer shows it too. Honors the
   search/assignee/health filters; shows complete + incomplete together (no completion
   filter in archive view).
+- **DueDatePicker** — Asana's due-date control: the row is a calendar glyph + `Jun 4` +
+  a clear ×, and clicking opens a popover with a typed field (`6/4/26`, `2026-06-04`),
+  a month grid, and Clear. Replaced a raw `<input type="date">`. Emits `'YYYY-MM-DD'`
+  or `null`, the shape the API already took.
 - **CardDrawer** — right drawer. Mark complete toggle, Status/Assignee/Due, Tags
   (combobox), custom fields (only those with a value, "+ Add field" to reveal more).
   Field inputs are **borderless until hover** (border on hover, blue on focus — Asana).
@@ -394,6 +399,12 @@ Familiar to Asana users (board reference), but with our color rules.
   drawer combobox. Color derived from tag name (consistent everywhere).
 - Users: colored initial avatars, one consistent color per person (no photos yet).
 - Long comments/descriptions truncate with "See more".
+- **Due dates are CALENDAR DATES, not instants** — stored at UTC midnight, so they must
+  be read/written via `utils/dueDate` (`formatDue`, `isOverdue`, `toInput`). Never
+  `toLocaleDateString`/`getDate()` on one: in any negative-offset timezone that prints the
+  PREVIOUS day, which is exactly how every board card came to show due dates a day early
+  (America/New_York rendered "Jun 3" for Asana's "Jun 4"). Overdue means strictly BEFORE
+  today's local date — a card due today is not overdue.
 - Completed = green ✓ + **dimmed** title, never strikethrough (Asana does the same, and
   many subtask titles are short dates like `5/8` that a line through the middle makes
   hard to read). Applies to card faces, the drawer title, and subtasks — keep them
