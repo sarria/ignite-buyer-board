@@ -111,7 +111,8 @@ export default function BoardPage() {
   // All filters in ONE object (see utils/cardFilters) so views, the popover and the
   // predicate can't drift. Completion stays separate: the archive view ignores it.
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [completedFilter, setCompletedFilter] = useState('incomplete'); // incomplete | all | completed
+  // Defaults to 'all': buyers want the whole board, not a filtered slice, on arrival.
+  const [completedFilter, setCompletedFilter] = useState('all'); // incomplete | all | completed
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();

@@ -448,11 +448,12 @@ Familiar to Asana users (board reference), but with our color rules.
   `dueExact()` in a tooltip** (`Thursday, June 4, 2026`), because a relative label is
   easier to scan but drops information. Overdue stays red; today is bold, not red — it
   isn't late yet, and red is reserved for errors.
+- Completed cards are shown by default (Tasks filter = All).
 - Completed = green ✓ + **dimmed** title, never strikethrough (Asana does the same, and
   many subtask titles are short dates like `5/8` that a line through the middle makes
   hard to read). Applies to card faces, the drawer title, and subtasks — keep them
-  consistent. Hidden by default (board "Tasks"
-  filter: Incomplete / All / Completed).
+  consistent. Board "Tasks" filter: Incomplete / All /
+  Completed, defaulting to All.
 - Theming: MUI light/dark in `theme.js`, primary `#4573d2`; user preference in
   AppContext (defaults to dark / OS pref), persisted in localStorage.
 - **`theme.js` is the single source of truth — do NOT hardcode `fontSize` or the brand
@@ -744,8 +745,9 @@ node migration/lumina-match.js --revert=<report>  # undo one --apply run
 
 ## Key Business Rules
 
-1. **Completed ≠ Archived.** Completion is a per-card flag (✓), shown but **hidden by
-   default** (Tasks filter). Archived = in an archive column / manually archived,
+1. **Completed ≠ Archived.** Completion is a per-card flag (✓). The Tasks filter
+   (Incomplete / All / Completed) defaults to **All** — buyers want the whole board on
+   arrival, not a filtered slice. (It defaulted to Incomplete until 2026-08-04.) Archived = in an archive column / manually archived,
    shown only via the archive toggle. A card can be both.
 2. Cards are hard-deleted only if empty (no description, fields, comments, subtasks);
    otherwise archived. Admin-only delete.

@@ -58,7 +58,8 @@ export default function BoardFilters({
   const [pending, setPending] = useState([]);
 
   const active = activeFilterKeys(filters);
-  const count = active.length + (completion !== 'incomplete' ? 1 : 0);
+  // 'all' is the neutral default, so only a narrowed completion counts toward the badge.
+  const count = active.length + (completion !== 'all' ? 1 : 0);
 
   const set = (key, value) => onChange({ ...filters, [key]: value });
   const setEnum = (fieldId, value) =>
@@ -66,7 +67,7 @@ export default function BoardFilters({
 
   const clearAll = () => {
     onChange({ ...EMPTY_FILTERS, search: filters.search });
-    onCompletionChange('incomplete');
+    onCompletionChange('all');
     setPending([]);
   };
 
@@ -144,8 +145,8 @@ export default function BoardFilters({
             {count > 0 && <Button size="small" onClick={clearAll}>Clear all</Button>}
           </Box>
 
-          {/* Completion is its own row — it always has a value ("Incomplete" by default),
-              so it can't be an add/remove filter like the others. */}
+          {/* Completion is its own row rather than an add/remove filter: it always has a
+              value. 'All' is the default, so it contributes nothing to the badge count. */}
           <Typography variant="caption" color="text.secondary">Tasks</Typography>
           <FormControl size="small" fullWidth sx={{ mt: 0.5, mb: 2 }}>
             <Select value={completion} onChange={e => onCompletionChange(e.target.value)} sx={selectSx}>
