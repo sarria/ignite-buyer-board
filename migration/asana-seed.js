@@ -134,7 +134,28 @@ async function main() {
   const roles = {};
   const INTERACTIVE = process.argv.includes('--columns');
 
-  if (AUTO) {
+  // Name the columns explicitly and skip the prompts entirely:
+  //   --archive="Cancelled Clients,Completed Campaigns" --skip="Duplicate Task Board"
+  // Case-insensitive exact match on the column name. This is how you archive a couple of
+  // history columns without walking every column you already know you're keeping.
+  const nameList = (v) => (v || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+  const archiveNames = nameList(arg('archive'));
+  const skipNames = nameList(arg('skip'));
+  const named = archiveNames.length || skipNames.length;
+  if (named) {
+    const known = new Set(data.columns.map(c => c.name.toLowerCase()));
+    for (const n of [...archiveNames, ...skipNames]) {
+      if (!known.has(n)) console.warn(`  WARNING: no column named "${n}" on this board — check the spelling.`);
+    }
+  }
+
+  if (named) {
+    for (const col of data.columns) {
+      const lower = col.name.toLowerCase();
+      roles[col.asana_gid] = archiveNames.includes(lower) ? 'archive'
+        : skipNames.includes(lower) ? 'skip' : 'keep';
+    }
+  } else if (AUTO) {
     for (const col of data.columns) {
       const lower = col.name.toLowerCase();
       if (archivePatterns.some(pat => lower.includes(pat))) roles[col.asana_gid] = 'archive';
@@ -152,12 +173,18 @@ async function main() {
     rl.close();
   } else {
     for (const col of data.columns) roles[col.asana_gid] = 'keep';
-    console.log(`  Keeping all ${data.columns.length} columns (--columns to choose, --auto for name patterns).`);
+    console.log(`  Keeping all ${data.columns.length} columns (--archive="A,B" / --skip="C" to change, --columns to choose one by one).`);
   }
 
   for (const [gid, role] of Object.entries(roles)) {
     if (role === 'archive') archiveColumns.add(gid);
     else if (role === 'skip') skipColumns.add(gid);
+  }
+  if (named) {
+    const nameOf = gid => (data.columns.find(c => c.asana_gid === gid) || {}).name;
+    console.log(`  Archive: ${[...archiveColumns].map(nameOf).join(', ') || '(none)'}`);
+    console.log(`  Skip:    ${[...skipColumns].map(nameOf).join(', ') || '(none)'}`);
+    console.log(`  Keep:    ${data.columns.length - archiveColumns.size - skipColumns.size} column(s)`);
   }
 
   // 5. Upsert columns

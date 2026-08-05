@@ -93,12 +93,26 @@ board. Run it with no arguments to list what's available.
 
 ```bash
 node migration/asana-seed.js <export-file.json>             # no prompts, keeps every column
-node migration/asana-seed.js <export-file.json> --columns   # choose per column
-node migration/asana-seed.js <export-file.json> --auto      # apply the name patterns
+node migration/asana-seed.js <export-file.json>   --archive="Cancelled Clients,Completed Campaigns"   --skip="Duplicate Task Board"                             # name them, still no prompts
+node migration/asana-seed.js <export-file.json> --columns   # choose one by one
 ```
 
-**It does not ask about columns by default** — every column is kept. Use `--columns` if you
-want to archive or skip any.
+**It does not ask about columns by default** — every column is kept. Name the exceptions
+with `--archive` / `--skip` (case-insensitive, exact column name; it warns on a name the
+board doesn't have). `--columns` walks every column if you'd rather review them all.
+
+### Which columns to archive, and why
+
+Archiving does **not** hide a card from its section: an archived card keeps its `columnId`,
+the archive grid labels each card with the column it came from, and the Column filter works
+there. So "archive it" and "keep a Cancelled section" are the same thing — the cards just
+stop loading with the active board.
+
+What decides it is proportion. On Rachel's board `Cancelled Clients` held **~2,000 of 2,416
+cards (83%)** — that's an archive wearing a section's name, and leaving it active makes
+every board load fetch ~6x the cards for accounts nobody works. Compare Dream Team, which
+has no cancelled section at all: Paused 30%, Completed 16% — those are live stages, keep
+them.
 
 Idempotent — upserts by `asanaGid`, so re-running updates rather than duplicates.
 Creates the board (keyed on `asanaProjectGid`), columns, custom fields, cards, subtasks,
@@ -122,6 +136,7 @@ Decisions for the known boards (confirmed 2026-08-03):
 | Board | Archive | Skip |
 |---|---|---|
 | The A Team (Team Rachel) | `Cancelled Clients`, `Completed Campaigns` | `Duplicate Task Board` |
+
 | The Dream Team (Team Conrad) | `Completed` | — |
 | Team Kathy | `Completed`, `Cancelled Clients` | `Template / Example` |
 | Team T Tots (Team Travis) | `Completed`, `Cancelled Clients` | `Template / Example` |
