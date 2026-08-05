@@ -9,6 +9,23 @@ fix both.
 
 ---
 
+## The short version
+
+```bash
+node migration/import-board.js rachel      # migrate -> seed -> link Lumina, one command
+node migration/import-board.js --all       # every board in boards.config.js
+```
+
+`boards.config.js` holds each board's GID and its archive/skip decisions, so nobody has to
+remember which columns to archive on which board — **adding a board means adding an entry
+there**, and importing it is then always the same command. Flags: `--skip-migrate` (re-seed
+from the existing export), `--skip-match`, `--dry-match`.
+
+It stops at the first failing step: a half-migrated export shouldn't be seeded, and an
+incomplete seed shouldn't be matched against Lumina.
+
+The rest of this file is the three steps it runs, for when you need one on its own.
+
 ## Prerequisites
 
 In `.env` (see `.env.example`):

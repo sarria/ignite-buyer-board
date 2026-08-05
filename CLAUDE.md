@@ -83,7 +83,9 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │   ├── lib/                         # s3.js (presign + delete + publicUrl)
 │   └── db/                          # index.js (connection + indexes), test-connection.js
 ├── api/index.js                     # Vercel serverless entry → exports server/app
-├── migration/                       # asana-explore.js, asana-migrate.js, asana-seed.js,
+├── migration/                       # import-board.js (one command per board),
+│                                    #   boards.config.js (gids + archive/skip per board),
+│                                    #   asana-explore.js, asana-migrate.js, asana-seed.js,
 │                                    #   lumina-match.js, README.md (runbook)
 │                                    #   (+ asana-export-rachel.json, gitignored)
 ├── scripts/screenshot.mjs           # dev-only: CDP screenshot of a running page (see below)
@@ -733,6 +735,11 @@ stays "show everything" until someone narrows it.
 
 Standalone scripts in `migration/` (read Asana, write JSON, then seed Mongo). Both
 honor `DNS_SERVERS`. The export JSON is gitignored.
+
+**One board = one command:** `node migration/import-board.js <key>` runs migrate → seed →
+lumina-match, taking that board's GID and archive/skip columns from `boards.config.js`.
+**A new board is a config entry, not a new command to remember** — that file is where those
+decisions live so they don't live in someone's head.
 
 **→ `migration/README.md` is the step-by-step runbook**: import a new board, clean
 re-import an existing one, per-board column decisions, known project GIDs, and
