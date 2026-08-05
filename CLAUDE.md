@@ -59,7 +59,7 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       │                            #   subtasks, comments, templates, users, uploads, client
 │       ├── components/
 │       │   ├── Board/               # BoardColumn, BoardCard, CardFace, ArchivedCard,
-│       │   │                        #   ArchivedGrid, CalendarView, BoardFilters
+│       │   │                        #   ArchivedGrid, CalendarView, ListView, BoardFilters
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
 │       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent,
 │       │   │                        #   Collapsible, DueDatePicker
@@ -183,8 +183,10 @@ Columns    GET/POST /boards/:id/columns · PUT /boards/:id/columns/reorder · PU
 Fields     GET/POST /boards/:id/fields · PUT /boards/:id/fields/reorder · PUT /fields/:id (name,type,options) · DELETE /fields/:id
 Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards/:id/cards
            GET /boards/:id/card-counts → { cardId: {subtaskCount,subtaskDone,commentCount} }
-             (SEPARATE from listCards on purpose: ~2s on 2.4k cards, so the client fetches
-              it after first paint and merges it in — the board stays frame-first)
+             (SEPARATE from listCards on purpose: ~0.6-2s on 2.4k cards, so the client
+              fetches it after first paint. Held in its OWN state and merged at render —
+              writing it into `cards` raced the cards fetch and the counts vanished
+              whenever they won.)
            PUT /boards/:id/cards/reorder
            GET /cards/:id (card+comments+subtasks) · PUT /cards/:id · DELETE(admin)
            PUT /cards/:id/move {columnId,position} · PUT /cards/:id/move-board {boardId,columnId}
@@ -341,6 +343,15 @@ lists scroll, never the page (mirrors Asana).
   campaign from the stored `lumina.name` — no per-card Lumina fetch on the board).
   Blue rather than muted like the counts: it's a property of the card, not a tally, so
   it reads at a glance when scanning a column for what still needs linking.
+- **ListView** — Asana's List view: one table **grouped by column** (Asana's sections),
+  each group collapsible with a count and its own `+ Add task`. Columns are Name /
+  Assignee / Due date / **every enum custom field**. The name cell carries what belongs to
+  the task rather than to a column of its own: completion toggle, Lumina glyph, subtask and
+  comment counts, tag dots. A row with subtasks gets a caret that expands them **inline and
+  indented**, fetched on first expand (`getCard`) since the card list doesn't carry them.
+  Header is sticky. One CSS-grid template is shared by the header, card rows and subtask
+  rows — that, not measurement, is what keeps columns aligned across groups.
+  Adding here does NOT open the drawer (unlike the board composer): rows are added in runs.
 - **BoardFilters** — the Filter button + popover (filter set listed under *Design*).
   Rows are add/remove: a filter row shows because it has a value or because you added it.
   Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus
@@ -533,8 +544,8 @@ Familiar to Asana users (board reference), but with our color rules.
   grid alike (archive ignores completion).
 
 **Views (decided 2026-08-04, reversing the earlier "no view tabs" call):** the board gets
-**three** — **List, Board, Calendar** — switched from a toggle in the toolbar. Board and
-Calendar are built; List is next. All three share ONE filter predicate
+**three** — **List, Board, Calendar** — switched from a toggle in the toolbar. All three
+are built. All three share ONE filter predicate
 (`utils/cardFilters`) so a filter can't work on one view and not another. The view is
 remembered per board in localStorage and mirrored to `?view=` so a link carries it.
 **Timeline is still out** — it needs start dates, which we don't have.

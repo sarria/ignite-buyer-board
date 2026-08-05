@@ -6,6 +6,7 @@ import {
   ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -22,6 +23,7 @@ import BoardColumn from '../components/Board/BoardColumn';
 import BoardCard from '../components/Board/BoardCard';
 import ArchivedGrid from '../components/Board/ArchivedGrid';
 import CalendarView from '../components/Board/CalendarView';
+import ListView from '../components/Board/ListView';
 import BoardFilters from '../components/Board/BoardFilters';
 import { cardMatchesFilters, matchesCompletion, EMPTY_FILTERS } from '../utils/cardFilters';
 import CardDrawer from '../components/Card/CardDrawer';
@@ -125,7 +127,7 @@ export default function BoardPage() {
   // shares the view, and remembered per board so switching away and back is sticky.
   const [view, setView] = useState(() => {
     const fromUrl = searchParams.get('view');
-    if (fromUrl === 'calendar' || fromUrl === 'board') return fromUrl;
+    if (['list', 'board', 'calendar'].includes(fromUrl)) return fromUrl;
     try { return localStorage.getItem(`board.view.${id}`) || 'board'; } catch { return 'board'; }
   });
   const [showArchived, setShowArchived] = useState(false);
@@ -197,16 +199,18 @@ export default function BoardPage() {
   }, [id]);
 
   // Keep the cache in sync with the live board state so the next visit is instant.
-  // Subtask/comment counts arrive AFTER the cards are on screen: they cost ~2s on a big
-  // board and the board is frame-first. A failure is silent — a missing count is a far
-  // smaller problem than a board that won't render.
+  // Subtask/comment counts arrive AFTER the cards are on screen — they cost ~0.6-2s and
+  // the board is frame-first. Kept in their OWN state and merged at render rather than
+  // written into `cards`: the two requests race, and when counts won, the merge landed on
+  // a stale array and the cards response then overwrote it — counts silently vanished on
+  // whichever load happened to be fast. A failure here is silent; a missing count matters
+  // far less than a board that won't render.
+  const [cardCounts, setCardCounts] = useState({});
   useEffect(() => {
     let cancelled = false;
+    setCardCounts({});
     getCardCounts(id)
-      .then((counts) => {
-        if (cancelled) return;
-        setCards(prev => prev.map(c => (counts[c._id] ? { ...c, ...counts[c._id] } : c)));
-      })
+      .then((counts) => { if (!cancelled) setCardCounts(counts); })
       .catch(() => { /* counts are optional */ });
     return () => { cancelled = true; };
   }, [id]);
@@ -323,6 +327,13 @@ export default function BoardPage() {
     openCard(created._id); // open the new card so the user can keep filling it in
   }, [id, openCard]);
 
+  // List view adds rows without opening the drawer: the composer stays put so you can
+  // type a run of them, which a drawer sliding over the table would interrupt.
+  const handleAddCardQuiet = useCallback(async (columnId, title) => {
+    const created = await createCard(id, { columnId, title });
+    setCards(prev => [...prev, created]);
+  }, [id]);
+
   // Adding from a calendar day cell. The calendar has no column context, so new cards
   // land in the FIRST column — the same place the board's own composer would put a card
   // you hadn't sorted yet. The due date comes from the cell you clicked.
@@ -381,13 +392,18 @@ export default function BoardPage() {
     [cards]
   );
 
+  const cardsWithCounts = useMemo(
+    () => cards.map(c => (cardCounts[c._id] ? { ...c, ...cardCounts[c._id] } : c)),
+    [cards, cardCounts]
+  );
+
   // Active (non-archived) cards passing the toolbar filters — what the board columns and
   // the calendar both draw from.
   const visibleCards = useMemo(
-    () => cards.filter(card => !card.isArchived
+    () => cardsWithCounts.filter(card => !card.isArchived
       && matchesCompletion(card, completedFilter)
       && cardMatchesFilters(card, filters)),
-    [cards, completedFilter, filters]
+    [cardsWithCounts, completedFilter, filters]
   );
 
   const cardsByColumn = useMemo(() => {
@@ -405,8 +421,8 @@ export default function BoardPage() {
   // minus the completion filter — the archive shows complete + incomplete together.
   const archivedCards = useMemo(() => {
     if (!showArchived) return [];
-    return cards.filter(card => card.isArchived && cardMatchesFilters(card, filters));
-  }, [showArchived, cards, filters]);
+    return cardsWithCounts.filter(card => card.isArchived && cardMatchesFilters(card, filters));
+  }, [showArchived, cardsWithCounts, filters]);
 
   const columnNameById = useMemo(
     () => Object.fromEntries(columns.map(c => [c._id?.toString(), c.name])),
@@ -474,6 +490,9 @@ export default function BoardPage() {
               onChange={(_, v) => { if (v) setView(v); }}
               sx={{ mr: 0.5, '& .MuiToggleButton-root': { px: 1.25, py: 0.375, textTransform: 'none', border: 0 } }}
             >
+              <ToggleButton value="list">
+                <FormatListBulletedIcon sx={{ fontSize: 16, mr: 0.5 }} /> List
+              </ToggleButton>
               <ToggleButton value="board">
                 <ViewKanbanOutlinedIcon sx={{ fontSize: 16, mr: 0.5 }} /> Board
               </ToggleButton>
@@ -545,7 +564,18 @@ export default function BoardPage() {
       )}
 
       {/* Board / Calendar / (archive grid) */}
-      {!showArchived && view === 'calendar' ? (
+      {!showArchived && view === 'list' ? (
+        <ListView
+          cards={visibleCards}
+          columns={columns}
+          fields={fields}
+          users={users}
+          selectedCardId={drawerCardId}
+          onCardClick={card => openCard(card._id)}
+          onToggleComplete={handleToggleComplete}
+          onAddCard={handleAddCardQuiet}
+        />
+      ) : !showArchived && view === 'calendar' ? (
         <CalendarView
           cards={visibleCards}
           fields={fields}

@@ -42,6 +42,14 @@ Known boards:
 | Team Kathy | `1208888075650797` |
 | Team T Tots (Team Travis) | `1205337491932125` |
 
+
+```bash
+node migration/asana-migrate.js --project=1156457376337923   # Rachel (~20 min longer now)
+node migration/asana-migrate.js --project=1205337491932114   # Dream Team
+node migration/asana-migrate.js --project=1208888075650797   # Team Kathy
+node migration/asana-migrate.js --project=1205337491932125   # T Tots
+```
+
 > Careful: T Tots is `…932125` and Dream Team is `…932114` — one digit apart. Paste, don't type.
 > (T Tots wasn't visible to the `ASANA_PAT` user until 2026-08-04; if a board can't be
 > found, that's usually project membership rather than a wrong name.)
