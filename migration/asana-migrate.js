@@ -569,7 +569,7 @@ async function main() {
   }
 
   console.log('\n✓ Migration export complete.');
-  console.log('  Next step: review asana-export-rachel.json, then load it into the new app database.');
+  console.log(`  Next step: node migration/asana-seed.js ${path.basename(OUTPUT_FILE)}`);
 }
 
 main().catch(err => {

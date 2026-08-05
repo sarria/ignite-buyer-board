@@ -3,7 +3,7 @@
 /**
  * asana-seed.js
  *
- * Loads asana-export-rachel.json into MongoDB.
+ * Loads an Asana export JSON into MongoDB.
  * Idempotent — safe to re-run. Uses asanaGid as upsert key.
  *
  * Usage:
@@ -27,16 +27,25 @@ const readline = require('readline');
 // Which export to load. Positional or --file=, so both of these work:
 //   node migration/asana-seed.js asana-export-team-bravo.json --auto
 //   node migration/asana-seed.js --file=asana-export-team-bravo.json
-// Defaults to Rachel's export, the one board already seeded from this file.
+// REQUIRED — no default. A default filename meant an unrelated board could be seeded by
+// a command that looked right, and there are four exports in this directory now.
 function arg(name) {
   const hit = process.argv.find(a => a.startsWith(`--${name}=`));
   return hit ? hit.split('=').slice(1).join('=') : null;
 }
 const positional = process.argv.slice(2).find(a => !a.startsWith('--'));
-const EXPORT_FILE = path.resolve(
-  __dirname,
-  arg('file') || positional || 'asana-export-rachel.json',
-);
+const chosen = arg('file') || positional;
+if (!chosen) {
+  console.error('Usage: node migration/asana-seed.js <export-file.json> [--columns] [--auto]');
+  const fs0 = require('fs');
+  const found = fs0.readdirSync(__dirname).filter(f => /^asana-export-.*\.json$/.test(f));
+  if (found.length) {
+    console.error('Exports available in migration/:');
+    found.forEach(f => console.error('  ' + f));
+  }
+  process.exit(1);
+}
+const EXPORT_FILE = path.resolve(__dirname, chosen);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

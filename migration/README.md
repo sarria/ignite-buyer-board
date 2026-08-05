@@ -56,10 +56,13 @@ node migration/asana-migrate.js --project=<gid> [--out=<file>]
 ```
 
 ```bash
-node migration/asana-migrate.js --project=1156457376337923   # Rachel (~20 min longer now)
+node migration/asana-migrate.js --project=1156457376337923   # Rachel — the long one
 node migration/asana-migrate.js --project=1205337491932114   # Dream Team
 node migration/asana-migrate.js --project=1208888075650797   # Team Kathy
 node migration/asana-migrate.js --project=1205337491932125   # T Tots
+
+node migration/asana-seed.js <export.json>      # no column prompts now
+node migration/lumina-match.js --board=<id>     # then --apply
 ```
 
 - `--project` is **required, no default** — a default meant an accidental run re-exported
@@ -83,6 +86,10 @@ new file, so the previous export survives until the new one succeeds.
 ---
 
 ## 3. Seed JSON → MongoDB
+
+The export file is **required** — there's no default, because four exports live in this
+directory and a defaulted filename meant a command that looked right could seed the wrong
+board. Run it with no arguments to list what's available.
 
 ```bash
 node migration/asana-seed.js <export-file.json>             # no prompts, keeps every column
