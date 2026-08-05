@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, IconButton, Button, Tooltip, Avatar, Chip,
   Select, MenuItem, FormControl, TextField,
@@ -171,6 +171,7 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
 
 export default function CalendarView({
   cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete, onAddCard,
+  addSignal = 0,
 }) {
   const today = todayInput();
   // ONE date anchor drives both modes — Months renders the month containing it, Weeks the
@@ -192,6 +193,15 @@ export default function CalendarView({
   const [weekends, setWeekends] = useState(() => {
     try { return (localStorage.getItem(WEEKENDS_KEY) || 'hide') === 'show'; } catch { return false; }
   });
+  // Header "Add task": jump to today and open that day's composer, so the new card lands
+  // somewhere visible instead of on a date you can't see.
+  useEffect(() => {
+    if (!addSignal) return;
+    setAnchor(today);
+    setComposing(today);
+    setDraft('');
+  }, [addSignal]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const persist = (key, v, set) => {
     set(v);
     try { localStorage.setItem(key, v); } catch { /* ignore */ }

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Box, Typography, Paper, IconButton, TextField, Button, Menu, MenuItem, Tooltip, Skeleton } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -12,7 +12,7 @@ import BoardCard from './BoardCard';
 
 export default function BoardColumn({
   column, cards = [], fields = [], users = [], templates = [],
-  onCardClick, onAddCard, onApplyTemplate, showArchived = false, isDragOverlay = false,
+  onCardClick, onAddCard, onApplyTemplate, showArchived = false, isDragOverlay = false, addSignal = 0,
   selectedCardId = null, loadingCards = false,
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -29,6 +29,11 @@ export default function BoardColumn({
   const [newTitle, setNewTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [templateAnchor, setTemplateAnchor] = useState(null);
+
+  // The board's header "Add task" opens THIS column's composer rather than a modal, so
+  // creating a card looks the same however you start it. Only the first column is given a
+  // rising signal (see BoardPage).
+  useEffect(() => { if (addSignal) setAdding(true); }, [addSignal]);
   const scrollRef = useRef(null);
 
   // New cards land at the end of the list (which may be scrolled out of view).

@@ -5,6 +5,7 @@ import {
   Tooltip, IconButton, Chip, Divider, Skeleton, InputBase, Button,
   ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
@@ -130,6 +131,10 @@ export default function BoardPage() {
     if (['list', 'board', 'calendar'].includes(fromUrl)) return fromUrl;
     try { return localStorage.getItem(`board.view.${id}`) || 'board'; } catch { return 'board'; }
   });
+  // Bumped by the top-bar "Add task". Each view watches it and opens ITS OWN inline
+  // composer — first group in List, first column on the Board, today's cell in Calendar —
+  // rather than popping a modal, so creating a card looks the same however you start it.
+  const [addSignal, setAddSignal] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedLoaded, setArchivedLoaded] = useState(cachedInit?.archivedLoaded ?? false);
   const [loadingArchived, setLoadingArchived] = useState(false);
@@ -469,6 +474,18 @@ export default function BoardPage() {
           }}
         />
 
+        {!showArchived && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+            onClick={() => setAddSignal(n => n + 1)}
+            sx={{ height: 34, borderRadius: 2, textTransform: 'none', flexShrink: 0 }}
+          >
+            Add task
+          </Button>
+        )}
+
         <BoardFilters
           filters={filters}
           onChange={setFilters}
@@ -576,6 +593,7 @@ export default function BoardPage() {
           onAddCard={handleAddCardQuiet}
           onReorderColumns={setColumns}
           boardId={id}
+          addSignal={addSignal}
         />
       ) : !showArchived && view === 'calendar' ? (
         <CalendarView
@@ -587,6 +605,7 @@ export default function BoardPage() {
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
           onAddCard={handleAddCardOnDate}
+          addSignal={addSignal}
         />
       ) : showArchived ? (
         <ArchivedGrid
@@ -608,10 +627,11 @@ export default function BoardPage() {
             <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'stretch', p: 2 }}>
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => <SkeletonColumn key={i} />)
-                : columns.map(col => (
+                : columns.map((col, colIndex) => (
                   <BoardColumn
                     key={col._id}
                     column={col}
+                    addSignal={colIndex === 0 ? addSignal : 0}
                     cards={cardsByColumn[col._id] || []}
                     fields={fields}
                     users={users}

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Avatar, Tooltip, IconButton, Chip, TextField, CircularProgress, Button,
+  Box, Typography, Avatar, Tooltip, IconButton, Chip, TextField, CircularProgress,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -15,7 +15,6 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import AddIcon from '@mui/icons-material/Add';
 import { getCard } from '../../api/cards';
 import { createSubtask } from '../../api/subtasks';
 import { reorderColumns } from '../../api/columns';
@@ -141,13 +140,20 @@ function Group({ col, children, collapsed, onToggle, count }) {
 
 export default function ListView({
   cards, columns = [], fields = [], users = [], selectedCardId,
-  onCardClick, onToggleComplete, onAddCard, onReorderColumns, boardId,
+  onCardClick, onToggleComplete, onAddCard, onReorderColumns, boardId, addSignal = 0,
 }) {
   const [collapsed, setCollapsed] = useState({});     // columnId -> true
   const [expanded, setExpanded] = useState({});       // cardId -> true
   const [subtasks, setSubtasks] = useState({});       // cardId -> [] | 'loading'
   const [addingIn, setAddingIn] = useState(null);     // columnId
   const [draft, setDraft] = useState('');
+
+  // Header "Add task" opens the composer in the first expanded group.
+  useEffect(() => {
+    if (!addSignal) return;
+    const first = columns.find(c => !collapsed[c._id]) || columns[0];
+    if (first) { setAddingIn(first._id); setDraft(''); }
+  }, [addSignal]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const enumFields = useMemo(() => fields.filter(f => f.type === 'enum'), [fields]);
   const userById = useMemo(
@@ -222,25 +228,6 @@ export default function ListView({
   return (
     <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <Box sx={{ minWidth: 760 }}>
-        {/* Add task lives above the table too (Asana's placement) — the per-group one is
-            at the bottom of a group, which is a long scroll away on a 2,000-row column. */}
-        {onAddCard && (
-          <Box sx={{ px: 1.5, py: 1 }}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<AddIcon sx={{ fontSize: 16 }} />}
-              onClick={() => {
-                const first = columns.find(c => !collapsed[c._id]) || columns[0];
-                if (first) { setAddingIn(first._id); setDraft(''); }
-              }}
-              sx={{ textTransform: 'none' }}
-            >
-              Add task
-            </Button>
-          </Box>
-        )}
-
         {/* Header — sticky so the columns stay labelled while you scroll a long board */}
         <Box sx={{
           display: 'grid', gridTemplateColumns: GRID,

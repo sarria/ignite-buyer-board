@@ -352,9 +352,8 @@ lists scroll, never the page (mirrors Asana).
   Header is sticky. One CSS-grid template is shared by the header, card rows and subtask
   rows — that, not measurement, is what keeps columns aligned across groups.
   Adding here does NOT open the drawer (unlike the board composer): rows are added in runs.
-  `Add task` appears **twice on purpose** — above the table and at the end of each group.
-  The per-group one is the right place conceptually, but it's a 2,000-row scroll away on a
-  big column, so the toolbar one opens the composer in the first expanded group.
+  `Add task` also lives in the board's top bar (shared by all three views) because the
+  per-group one sits below every row — a 2,000-row scroll on a big column.
   Expanded rows end with **`Add subtask`**, matching the drawer's placement.
   Groups are **drag-reorderable** by a handle that appears on hover, through the same
   `reorderColumns` call board settings uses, so the two can't disagree about order.
@@ -532,6 +531,11 @@ Familiar to Asana users (board reference), but with our color rules.
     radius, set globally via `MuiButton`. Primary actions = `variant="contained"`
     (brand blue automatically; no per-button `sx` color). Asana-like.
   - **Shape** — default radius 8px.
+- **`Add task` in the top bar is shared by all three views.** It bumps an `addSignal`
+  counter and each view opens ITS OWN inline composer — first group in List, first column
+  on the Board, today's cell in Calendar (jumping there first, so the card doesn't land on
+  a date you can't see). Deliberately not a modal: creating a card then looks the same
+  however you started it.
 - Board toolbar (BoardPage top bar): slim row — board title (`h5`), a divider, then
   understated **filled "pill" controls** (search + filter selects) whose border appears
   only on hover/focus; filter selects render a muted `Label: Value` (no floating labels).
