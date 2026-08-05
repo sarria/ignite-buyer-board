@@ -72,16 +72,6 @@ Known boards:
 node migration/asana-migrate.js --project=<gid> [--out=<file>]
 ```
 
-```bash
-node migration/asana-migrate.js --project=1156457376337923   # Rachel — the long one
-node migration/asana-migrate.js --project=1205337491932114   # Dream Team
-node migration/asana-migrate.js --project=1208888075650797   # Team Kathy
-node migration/asana-migrate.js --project=1205337491932125   # T Tots
-
-node migration/asana-seed.js <export.json>      # no column prompts now
-node migration/lumina-match.js --board=<id>     # then --apply
-```
-
 - `--project` is **required, no default** — a default meant an accidental run re-exported
   the wrong board over the file you wanted, and each board is thousands of API calls.
 - `--out` optional; otherwise derived from the project's real name
@@ -110,7 +100,7 @@ board. Run it with no arguments to list what's available.
 
 ```bash
 node migration/asana-seed.js <export-file.json>             # no prompts, keeps every column
-node migration/asana-seed.js <export-file.json>   --archive="Cancelled Clients,Completed Campaigns"   --skip="Duplicate Task Board"                             # name them, still no prompts
+node migration/asana-seed.js <export-file.json>   --archive="Cancelled Clients,Completed Campaigns"   --skip="Duplicate Task Board"
 node migration/asana-seed.js <export-file.json> --columns   # choose one by one
 ```
 
@@ -127,9 +117,10 @@ stop loading with the active board.
 
 What decides it is proportion. On Rachel's board `Cancelled Clients` held **~2,000 of 2,416
 cards (83%)** — that's an archive wearing a section's name, and leaving it active makes
-every board load fetch ~6x the cards for accounts nobody works. Compare Dream Team, which
-has no cancelled section at all: Paused 30%, Completed 16% — those are live stages, keep
-them.
+every board load fetch ~6x the cards for accounts nobody works. Dream Team has no cancelled section at all and its
+`Completed` is only 16%, but it's still finished work, so it's archived too — `Completed`
+is history on every board. What differs is scale: Rachel's is the one where leaving it
+active would dominate every view.
 
 Idempotent — upserts by `asanaGid`, so re-running updates rather than duplicates.
 Creates the board (keyed on `asanaProjectGid`), columns, custom fields, cards, subtasks,
@@ -148,19 +139,12 @@ A column named plain `Completed` does **not** match `'completed campaign'`, so i
 active column and dumps historical campaigns onto the live board. Columns are per board by
 design (business rule 5), so no global pattern list can be right for all of them.
 
-Decisions for the known boards (confirmed 2026-08-03):
-
-| Board | Archive | Skip |
-|---|---|---|
-| The A Team (Team Rachel) | `Cancelled Clients`, `Completed Campaigns` | `Duplicate Task Board` |
-
-| The Dream Team (Team Conrad) | `Completed` | — |
-| Team Kathy | `Completed`, `Cancelled Clients` | `Template / Example` |
-| Team T Tots (Team Travis) | `Completed`, `Cancelled Clients` | `Template / Example` |
+**The per-board decisions live in `boards.config.js`, not here** — one source of truth, and
+it's what `import-board.js` passes to the seeder. Read that file for the current answers;
+duplicating them in this doc is how the two end up disagreeing.
 
 T Tots has 13 columns including two that aren't workflow stages — `University of Alabama`
-(one client) and `OOO Section`. Left active by default; decide at the prompt whether
-buyers still work out of them.
+(one client) and `OOO Section`. Both are kept: odd names, but real live sections.
 
 `Template / Example` holds Asana task templates, which we don't import (still in
 *Planned*) — left in, they'd become ordinary cards.
@@ -172,9 +156,11 @@ column behind the archive toggle; `isCompleted` comes from Asana independently.
 
 ## 4. Link cards to Lumina
 
+`import-board.js` runs this for you with `--apply`. On its own:
+
 ```bash
-node migration/lumina-match.js --board=<boardId>            # dry run — writes a report
-node migration/lumina-match.js --board=<boardId> --apply    # write the links
+node migration/lumina-match.js --board=<boardId|asanaGid>          # dry run — writes a report
+node migration/lumina-match.js --board=<boardId|asanaGid> --apply  # write the links
 ```
 
 Mines identifiers buyers already paste into descriptions. Writes **only** the `lumina`
@@ -236,20 +222,18 @@ working in the app, see *Once the boards are in real use* below.
 1. **Archive the board** — dashboard → board ⋯ → *Archive*. Delete is refused on a
    non-empty active board (`409 BOARD_NOT_EMPTY`, `boards.js:83`).
 2. **Delete it** — same ⋯ menu → *Delete*. Cascades cards, subtasks, comments, columns,
-   custom fields, templates, plus S3 deletion of attachments **and** inline images in
-   descriptions and comment bodies.
+   custom fields, templates, plus S3 deletion of card attachments, **subtask attachments**,
+   and inline images in descriptions, `notesHtml` and comment bodies.
    Deliberately survives: the `users` collection (shared) and `app_settings.luminaFields`
    (app-wide, not per board).
-3. **Re-export** — step 2 above. Expect drift from your last export: this pulls whatever
-   changed in Asana since.
-4. **Re-seed** — step 3.
-5. **Re-link Lumina** — step 4.
+3. **Re-import** — `node migration/import-board.js <key>`. Expect drift from your last
+   export: it pulls whatever changed in Asana since.
+4. **Verify** — step 5.
 
-> **Boards imported before 2026-08-04 are missing subtask comments and assignees.** The
-> assignees can be backfilled from the existing export (they were captured, just dropped by
-> the seeder), but **comments were never exported** — recovering those needs a full
-> re-migrate of that board. The same is true of subtask attachments (added 2026-08-05).
-6. **Verify** — step 5.
+> **Boards imported before 2026-08-05 are missing subtask comments, attachments and
+> assignees.** Assignees can be backfilled from an existing export (they were captured,
+> just dropped by the seeder), but comments and attachments were **never exported** —
+> recovering those needs a full re-migrate of that board.
 
 Note the board gets a **new `_id`**, so old deep links (`?card=…`) and bookmarks break.
 
