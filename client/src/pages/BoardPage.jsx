@@ -574,6 +574,8 @@ export default function BoardPage() {
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
           onAddCard={handleAddCardQuiet}
+          onReorderColumns={setColumns}
+          boardId={id}
         />
       ) : !showArchived && view === 'calendar' ? (
         <CalendarView

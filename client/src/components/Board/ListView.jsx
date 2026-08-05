@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Box, Typography, Avatar, Tooltip, IconButton, Chip, TextField, CircularProgress,
+  Box, Typography, Avatar, Tooltip, IconButton, Chip, TextField, CircularProgress, Button,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -9,7 +9,16 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import LinkIcon from '@mui/icons-material/Link';
+import {
+  DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors,
+} from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import AddIcon from '@mui/icons-material/Add';
 import { getCard } from '../../api/cards';
+import { createSubtask } from '../../api/subtasks';
+import { reorderColumns } from '../../api/columns';
 import { formatDueRelative, dueExact, isOverdue, isToday } from '../../utils/dueDate';
 import { userColor } from '../../utils/userColor';
 import { tagColor } from '../../utils/tagColor';
@@ -91,9 +100,48 @@ function EnumCell({ field, card }) {
   );
 }
 
+// A group (board column) — draggable by the handle that appears on hover, so the list can
+// be reordered the same way the board's columns can. Same dnd-kit + reorderColumns path as
+// board settings, so the three surfaces can't disagree about order.
+function Group({ col, children, collapsed, onToggle, count }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: col._id });
+  return (
+    <Box
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      sx={{ opacity: isDragging ? 0.5 : 1, '&:hover .grp-handle': { opacity: 1 } }}
+    >
+      <Box
+        onClick={onToggle}
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5, py: 0.75,
+          cursor: 'pointer', bgcolor: 'background.default',
+          borderBottom: '1px solid', borderColor: 'divider',
+          '&:hover': { bgcolor: 'action.hover' },
+        }}
+      >
+        <Box
+          className="grp-handle"
+          {...attributes}
+          {...listeners}
+          onClick={e => e.stopPropagation()}
+          sx={{ display: 'flex', opacity: 0, transition: 'opacity .12s', cursor: 'grab', color: 'text.disabled' }}
+        >
+          <DragIndicatorIcon sx={{ fontSize: 16 }} />
+        </Box>
+        {collapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+        <Typography variant="subtitle2" fontWeight={700}>{col.name}</Typography>
+        <Typography variant="caption" color="text.secondary">{count}</Typography>
+      </Box>
+      {children}
+    </Box>
+  );
+}
+
 export default function ListView({
   cards, columns = [], fields = [], users = [], selectedCardId,
-  onCardClick, onToggleComplete, onAddCard,
+  onCardClick, onToggleComplete, onAddCard, onReorderColumns, boardId,
 }) {
   const [collapsed, setCollapsed] = useState({});     // columnId -> true
   const [expanded, setExpanded] = useState({});       // cardId -> true
@@ -134,6 +182,35 @@ export default function ListView({
     }
   };
 
+  // Adding a subtask from an expanded row, so the list can grow a checklist without
+  // opening the card.
+  const [addingSubIn, setAddingSubIn] = useState(null);   // cardId
+  const [subDraft, setSubDraft] = useState('');
+  const commitSub = async (cardId) => {
+    const title = subDraft.trim();
+    setSubDraft('');
+    if (!title) { setAddingSubIn(null); return; }
+    const created = await createSubtask(cardId, { title });
+    setSubtasks(p => ({ ...p, [cardId]: [...(Array.isArray(p[cardId]) ? p[cardId] : []), created] }));
+    setAddingSubIn(cardId);
+  };
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+
+  const handleGroupDragEnd = async ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const oldIndex = columns.findIndex(c => c._id === active.id);
+    const newIndex = columns.findIndex(c => c._id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(columns, oldIndex, newIndex);
+    onReorderColumns?.(reordered);                       // optimistic
+    try { await reorderColumns(boardId, reordered.map(c => c._id)); }
+    catch { onReorderColumns?.(columns); }               // put it back if the save failed
+  };
+
   const commitAdd = async (columnId) => {
     const title = draft.trim();
     setDraft('');
@@ -145,6 +222,25 @@ export default function ListView({
   return (
     <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <Box sx={{ minWidth: 760 }}>
+        {/* Add task lives above the table too (Asana's placement) — the per-group one is
+            at the bottom of a group, which is a long scroll away on a 2,000-row column. */}
+        {onAddCard && (
+          <Box sx={{ px: 1.5, py: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+              onClick={() => {
+                const first = columns.find(c => !collapsed[c._id]) || columns[0];
+                if (first) { setAddingIn(first._id); setDraft(''); }
+              }}
+              sx={{ textTransform: 'none' }}
+            >
+              Add task
+            </Button>
+          </Box>
+        )}
+
         {/* Header — sticky so the columns stay labelled while you scroll a long board */}
         <Box sx={{
           display: 'grid', gridTemplateColumns: GRID,
@@ -163,25 +259,19 @@ export default function ListView({
           ))}
         </Box>
 
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+        <SortableContext items={columns.map(c => c._id)} strategy={verticalListSortingStrategy}>
         {columns.map(col => {
           const rows = byColumn[col._id] || [];
           const isCollapsed = collapsed[col._id];
           return (
-            <Box key={col._id}>
-              {/* Group header */}
-              <Box
-                onClick={() => setCollapsed(p => ({ ...p, [col._id]: !p[col._id] }))}
-                sx={{
-                  display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.75,
-                  cursor: 'pointer', bgcolor: 'background.default',
-                  borderBottom: '1px solid', borderColor: 'divider',
-                  '&:hover': { bgcolor: 'action.hover' },
-                }}
-              >
-                {isCollapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                <Typography variant="subtitle2" fontWeight={700}>{col.name}</Typography>
-                <Typography variant="caption" color="text.secondary">{rows.length}</Typography>
-              </Box>
+            <Group
+              key={col._id}
+              col={col}
+              count={rows.length}
+              collapsed={isCollapsed}
+              onToggle={() => setCollapsed(p => ({ ...p, [col._id]: !p[col._id] }))}
+            >
 
               {!isCollapsed && rows.map(card => {
                 const done = !!card.isCompleted;
@@ -287,6 +377,40 @@ export default function ListView({
                         {enumFields.map(f => <Cell key={f._id} />)}
                       </Box>
                     ))}
+
+                    {/* Add subtask, at the END of the expanded list — same placement as the
+                        card drawer, so the affordance is where you finish reading. */}
+                    {open && Array.isArray(kids) && (
+                      <Box sx={{ display: 'grid', gridTemplateColumns: GRID, height: 34, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Cell sx={{ pl: 6 }}>
+                          {addingSubIn === card._id ? (
+                            <TextField
+                              size="small"
+                              autoFocus
+                              fullWidth
+                              variant="standard"
+                              placeholder="Subtask title"
+                              value={subDraft}
+                              onChange={e => setSubDraft(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') { e.preventDefault(); commitSub(card._id); }
+                                if (e.key === 'Escape') { setSubDraft(''); setAddingSubIn(null); }
+                              }}
+                              onBlur={() => { setAddingSubIn(null); setSubDraft(''); }}
+                              slotProps={{ input: { disableUnderline: true } }}
+                            />
+                          ) : (
+                            <Typography
+                              variant="body2"
+                              onClick={() => { setAddingSubIn(card._id); setSubDraft(''); }}
+                              sx={{ cursor: 'pointer', color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
+                            >
+                              Add subtask
+                            </Typography>
+                          )}
+                        </Cell>
+                      </Box>
+                    )}
                   </Box>
                 );
               })}
@@ -323,9 +447,11 @@ export default function ListView({
                   </Cell>
                 </Box>
               )}
-            </Box>
+            </Group>
           );
         })}
+        </SortableContext>
+        </DndContext>
       </Box>
     </Box>
   );

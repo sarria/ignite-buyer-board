@@ -352,6 +352,12 @@ lists scroll, never the page (mirrors Asana).
   Header is sticky. One CSS-grid template is shared by the header, card rows and subtask
   rows — that, not measurement, is what keeps columns aligned across groups.
   Adding here does NOT open the drawer (unlike the board composer): rows are added in runs.
+  `Add task` appears **twice on purpose** — above the table and at the end of each group.
+  The per-group one is the right place conceptually, but it's a 2,000-row scroll away on a
+  big column, so the toolbar one opens the composer in the first expanded group.
+  Expanded rows end with **`Add subtask`**, matching the drawer's placement.
+  Groups are **drag-reorderable** by a handle that appears on hover, through the same
+  `reorderColumns` call board settings uses, so the two can't disagree about order.
 - **BoardFilters** — the Filter button + popover (filter set listed under *Design*).
   Rows are add/remove: a filter row shows because it has a value or because you added it.
   Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus
