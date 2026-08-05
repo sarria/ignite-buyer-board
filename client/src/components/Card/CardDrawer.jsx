@@ -871,7 +871,14 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             })()}
 
             {/* Subtasks */}
-            <CardSubtasks cardId={card._id} subtasks={subtasks} onChange={setSubtasks} />
+            <CardSubtasks
+              cardId={card._id}
+              subtasks={subtasks}
+              onChange={setSubtasks}
+              users={users}
+              parentTitle={card.title}
+              readOnly={readOnly}
+            />
 
             <Divider sx={{ my: 2 }} />
 

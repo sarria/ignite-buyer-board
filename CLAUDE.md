@@ -403,6 +403,20 @@ lists scroll, never the page (mirrors Asana).
   Drawer is **drag-resizable** (left-edge handle, min 420px, persisted in localStorage
   `cardDrawer.width`), has a **full-screen** toggle, and a **copy-link** button that
   yields a deep link to the card.
+- **CardSubtasks / SubtaskDialog** — a subtask row shows done state, title, **due date**
+  (relative label, red when overdue) and assignee avatar, with delete on hover. **Clicking
+  the title opens `SubtaskDialog`**; the checkbox stays a separate hit target so ticking
+  something off never opens a dialog you didn't ask for.
+  `Add subtask` sits at the **END of the list** (Asana's placement — you decide to add one
+  after reading what's there, not from a header `+`) and the composer stays open after
+  Enter, since subtasks arrive in runs ("Opts 6.3", "Opts 7.3", …).
+  **SubtaskDialog** edits title / assignee / due date / notes — all four were already in
+  the schema and accepted by `PUT /subtasks/:id`, but unreachable, so a subtask was a bare
+  title. A modal, not a nested drawer: the card drawer is already a right-hand panel and
+  sliding a second one out of it makes "close" ambiguous. Read-only follows the parent card
+  (completed/archived), which is why a completed card shows no `Add subtask`.
+  **Subtask comments are NOT supported** — `comments` are keyed by `cardId`, so they need a
+  schema change; worth doing deliberately rather than smuggling into a UI change.
 - **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
   inside Collapsible "See more"). Migrated comments show "Imported from Asana".
 - **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
