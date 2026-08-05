@@ -76,15 +76,19 @@ new file, so the previous export survives until the new one succeeds.
 ## 3. Seed JSON → MongoDB
 
 ```bash
-node migration/asana-seed.js <export-file.json>          # interactive (recommended)
-node migration/asana-seed.js <export-file.json> --auto   # no prompts
+node migration/asana-seed.js <export-file.json>             # no prompts, keeps every column
+node migration/asana-seed.js <export-file.json> --columns   # choose per column
+node migration/asana-seed.js <export-file.json> --auto      # apply the name patterns
 ```
+
+**It does not ask about columns by default** — every column is kept. Use `--columns` if you
+want to archive or skip any.
 
 Idempotent — upserts by `asanaGid`, so re-running updates rather than duplicates.
 Creates the board (keyed on `asanaProjectGid`), columns, custom fields, cards, subtasks,
 comments, tags, attachments. Users are upserted from assignees.
 
-### Use interactive mode on a board you haven't imported before
+### If you do use --auto, know what its patterns miss
 
 `--auto`'s patterns were tuned to Rachel's column names and **silently mis-handle others**:
 

@@ -110,6 +110,7 @@ async function main() {
   const archivePatterns = ['cancelled', 'completed campaign'];
   const skipPatterns = ['duplicate'];
 
+
   console.log(`\n[4] Column configuration${AUTO ? ' (--auto mode)' : ''}`);
   console.log(`  Board: ${data.project.name}`);
   console.log(`  Columns found:`);
@@ -118,23 +119,36 @@ async function main() {
   const archiveColumns = new Set();
   const skipColumns = new Set();
 
+  // No prompts by default: every column is KEPT. Walking eleven columns to press enter
+  // eight times isn't a decision. Choose per column with --columns, or apply the name
+  // patterns above with --auto.
+  const roles = {};
+  const INTERACTIVE = process.argv.includes('--columns');
+
   if (AUTO) {
     for (const col of data.columns) {
       const lower = col.name.toLowerCase();
-      if (archivePatterns.some(p => lower.includes(p))) archiveColumns.add(col.asana_gid);
-      else if (skipPatterns.some(p => lower.includes(p))) skipColumns.add(col.asana_gid);
+      if (archivePatterns.some(pat => lower.includes(pat))) roles[col.asana_gid] = 'archive';
+      else if (skipPatterns.some(pat => lower.includes(pat))) roles[col.asana_gid] = 'skip';
+      else roles[col.asana_gid] = 'keep';
     }
-    console.log(`  Archive: ${[...archiveColumns].length} columns`);
-    console.log(`  Skip:    ${[...skipColumns].length} columns`);
-  } else {
+  } else if (INTERACTIVE) {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     for (const col of data.columns) {
-      const answer = await ask(rl, `\n  "${col.name}" — (a)rchive / (s)kip / (enter) keep: `);
+      const answer = await ask(rl, `
+  "${col.name}" - (a)rchive / (s)kip / (enter) keep: `);
       const choice = answer.trim().toLowerCase();
-      if (choice === 'a') archiveColumns.add(col.asana_gid);
-      else if (choice === 's') skipColumns.add(col.asana_gid);
+      roles[col.asana_gid] = choice === 'a' ? 'archive' : choice === 's' ? 'skip' : 'keep';
     }
     rl.close();
+  } else {
+    for (const col of data.columns) roles[col.asana_gid] = 'keep';
+    console.log(`  Keeping all ${data.columns.length} columns (--columns to choose, --auto for name patterns).`);
+  }
+
+  for (const [gid, role] of Object.entries(roles)) {
+    if (role === 'archive') archiveColumns.add(gid);
+    else if (role === 'skip') skipColumns.add(gid);
   }
 
   // 5. Upsert columns
