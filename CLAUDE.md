@@ -340,7 +340,15 @@ lists scroll, never the page (mirrors Asana).
   Rows are add/remove: a filter row shows because it has a value or because you added it.
   Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus
   completion separately, since the archive view ignores completion.
-- **CalendarView** — month calendar of cards by **due date**, mirroring Asana's Calendar.
+- **CalendarView** — calendar of cards by **due date**, mirroring Asana's. Two modes via
+  a **Weeks / Months** toggle (persisted): Months is the 6x7 grid; **Weeks is one tall row
+  where every card shows**, so no "N more" there. Both are driven by a single date anchor,
+  and prev/next steps by whichever unit is showing.
+  **`+ Add task` in each day cell** (revealed on hover) creates a card with that day as its
+  due date — the point of a calendar is that the date is implied by where you clicked.
+  New cards land in the FIRST column (the calendar has no column context) and the composer
+  stays open after Enter so a run of cards can be typed. It deliberately does NOT open the
+  drawer: you're usually adding several at once.
   Cards are Asana-height: assignee avatar, 2-line title, then a meta row (Lumina link
   glyph, subtask + comment counts, tag dots). A day with more than 3 cards shows a quiet grey
   **`N more` / `Show less`** toggle (Asana's wording and weight, not a bold blue link);

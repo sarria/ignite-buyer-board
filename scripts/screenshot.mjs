@@ -95,8 +95,12 @@ try {
   await send('Page.navigate', { url: ORIGIN });
   await waitForEvent('Page.loadEventFired');
   const pw = process.env.ACCESS_PASSWORD || '';
+  // SHOT_STORAGE='{"calendar.mode":"week"}' seeds extra keys. Needed for anything a
+  // component reads once at mount — setting it after load is too late.
+  const extra = JSON.parse(process.env.SHOT_STORAGE || '{}');
   await send('Runtime.evaluate', {
-    expression: `localStorage.setItem('accessPassword', ${JSON.stringify(pw)}); 'ok'`,
+    expression: `localStorage.setItem('accessPassword', ${JSON.stringify(pw)});
+      Object.entries(${JSON.stringify(extra)}).forEach(([k, v]) => localStorage.setItem(k, v)); 'ok'`,
   });
 
   events.length = 0;

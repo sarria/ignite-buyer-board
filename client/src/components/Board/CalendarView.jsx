@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Box, Typography, IconButton, Button, Tooltip, Avatar, Chip,
-  Select, MenuItem, FormControl,
+  Select, MenuItem, FormControl, TextField,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -12,7 +12,9 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import LinkIcon from '@mui/icons-material/Link';
-import { toInput, todayInput, monthGrid, monthLabel } from '../../utils/dueDate';
+import {
+  toInput, todayInput, monthGrid, monthLabel, addDays, addMonths, weekStart, weekLabel,
+} from '../../utils/dueDate';
 import { tagColor } from '../../utils/tagColor';
 import { userColor } from '../../utils/userColor';
 
@@ -31,9 +33,10 @@ const HEALTH_COLORS = {
   'Waiting on DCM': '#2196f3',
 };
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const PER_DAY = 3;                       // before collapsing into "N more"
+const PER_DAY = 3;                       // before collapsing into "N more" (Months only)
 const CARD_H = 56;                       // fixed — see CalendarCard for why
 const COLOR_BY_KEY = 'calendar.colorBy';
+const MODE_KEY = 'calendar.mode';        // 'month' | 'week'
 
 const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 
@@ -166,22 +169,26 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
 }
 
 export default function CalendarView({
-  cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete,
+  cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete, onAddCard,
 }) {
   const today = todayInput();
-  const [view, setView] = useState(() => {
-    const [y, m] = today.split('-').map(Number);
-    return { y, m: m - 1 };
+  // ONE date anchor drives both modes — Months renders the month containing it, Weeks the
+  // week containing it, and prev/next steps by whichever unit is showing.
+  const [anchor, setAnchor] = useState(today);
+  const [mode, setMode] = useState(() => {
+    try { return localStorage.getItem(MODE_KEY) || 'month'; } catch { return 'month'; }
   });
   const [expanded, setExpanded] = useState({});   // iso -> true, per-day "show all"
+  const [composing, setComposing] = useState(null);   // iso of the day being added to
+  const [draft, setDraft] = useState('');
   // Column colours are all the seeded default until someone changes them, so Health —
   // which has four real colours — is the useful default here.
   const [colorBy, setColorBy] = useState(() => {
     try { return localStorage.getItem(COLOR_BY_KEY) || 'health'; } catch { return 'health'; }
   });
-  const setColorByPersisted = (v) => {
-    setColorBy(v);
-    try { localStorage.setItem(COLOR_BY_KEY, v); } catch { /* ignore */ }
+  const persist = (key, v, set) => {
+    set(v);
+    try { localStorage.setItem(key, v); } catch { /* ignore */ }
   };
 
   const healthField = useMemo(
@@ -218,27 +225,38 @@ export default function CalendarView({
     return { byDay: map, noDate: none };
   }, [cards]);
 
-  const step = (delta) => setView(({ y, m }) => {
-    const n = m + delta;
-    return { y: y + Math.floor(n / 12), m: ((n % 12) + 12) % 12 };
-  });
-  const goToday = () => {
-    const [y, m] = today.split('-').map(Number);
-    setView({ y, m: m - 1 });
+  const isWeek = mode === 'week';
+  const [ay, am] = anchor.split('-').map(Number);
+  const grid = isWeek
+    ? Array.from({ length: 7 }, (_, i) => {
+      const iso = addDays(weekStart(anchor, 1), i);
+      return { iso, day: Number(iso.slice(8)), outside: false };
+    })
+    : monthGrid(ay, am - 1, 1);
+
+  const step = (delta) => setAnchor(a => (isWeek ? addDays(a, delta * 7) : addMonths(a, delta)));
+  const label = isWeek ? weekLabel(weekStart(anchor, 1)) : monthLabel(ay, am - 1);
+
+  const commitAdd = async (iso) => {
+    const title = draft.trim();
+    setDraft('');
+    if (!title) { setComposing(null); return; }
+    await onAddCard?.(title, iso);
+    setComposing(iso);   // stay open so a run of cards can be typed into one day
   };
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', p: 2, pt: 1 }}>
-      {/* Month nav */}
+      {/* Nav */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexShrink: 0 }}>
-        <Button size="small" onClick={goToday} variant="outlined">Today</Button>
-        <IconButton size="small" onClick={() => step(-1)} aria-label="Previous month">
+        <Button size="small" onClick={() => setAnchor(today)} variant="outlined">Today</Button>
+        <IconButton size="small" onClick={() => step(-1)} aria-label="Previous">
           <ChevronLeftIcon fontSize="small" />
         </IconButton>
-        <IconButton size="small" onClick={() => step(1)} aria-label="Next month">
+        <IconButton size="small" onClick={() => step(1)} aria-label="Next">
           <ChevronRightIcon fontSize="small" />
         </IconButton>
-        <Typography variant="h6" sx={{ ml: 0.5 }}>{monthLabel(view.y, view.m)}</Typography>
+        <Typography variant="h6" sx={{ ml: 0.5 }}>{label}</Typography>
         <Box sx={{ flex: 1 }} />
         {noDate > 0 && (
           <Tooltip title="Cards with no due date can't be placed on a calendar. Set a due date and they'll appear.">
@@ -247,8 +265,18 @@ export default function CalendarView({
         )}
         <FormControl size="small">
           <Select
+            value={mode}
+            onChange={e => persist(MODE_KEY, e.target.value, setMode)}
+            sx={{ height: 30, fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0 } }}
+          >
+            <MenuItem value="week">Weeks</MenuItem>
+            <MenuItem value="month">Months</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small">
+          <Select
             value={colorBy}
-            onChange={e => setColorByPersisted(e.target.value)}
+            onChange={e => persist(COLOR_BY_KEY, e.target.value, setColorBy)}
             sx={{ height: 30, fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0 } }}
           >
             <MenuItem value="health">Color: Health</MenuItem>
@@ -280,21 +308,25 @@ export default function CalendarView({
           // there is none here, since the grid already overflows and scrolls. `max-content`
           // sets the base size directly, so it doesn't need free space. The per-row floor
           // comes from the cell's own minHeight.
-          gridAutoRows: 'max-content',
+          // Weeks is instead a single row filling the height, so every card fits.
+          gridAutoRows: isWeek ? '1fr' : 'max-content',
           borderTop: 1, borderLeft: 1, borderColor: 'divider',
         }}
       >
-        {monthGrid(view.y, view.m, 1).map(({ iso, day, outside }) => {
+        {grid.map(({ iso, day, outside }) => {
           const dayCards = byDay[iso] || [];
           const isToday = iso === today;
-          const show = expanded[iso] ? dayCards : dayCards.slice(0, PER_DAY);
+          // Weeks has room for everything, so no "N more" there.
+          const show = (isWeek || expanded[iso]) ? dayCards : dayCards.slice(0, PER_DAY);
           const hidden = dayCards.length - show.length;
           return (
             <Box
               key={iso}
               sx={{
                 borderRight: 1, borderBottom: 1, borderColor: 'divider',
-                p: 0.5, minWidth: 0, minHeight: 2 * CARD_H + 30,
+                p: 0.5, minWidth: 0, minHeight: isWeek ? 0 : 2 * CARD_H + 30,
+                overflowY: isWeek ? 'auto' : 'visible',
+                '&:hover .cal-add': { opacity: 1 },
                 // Explicit flex column so cards stack predictably. NOT overflow:hidden —
                 // "Show more" has to make the week ROW grow (gridAutoRows max-content),
                 // and clipping an expanded day would hide cards outright, which is worse
@@ -337,7 +369,7 @@ export default function CalendarView({
                   grows the whole week ROW rather than scrolling or clipping the cell
                   (gridAutoRows max-content is what lets the row stretch). Rendered on
                   card count, not on `hidden`, so it survives being expanded. */}
-              {dayCards.length > PER_DAY && (
+              {!isWeek && dayCards.length > PER_DAY && (
                 <Typography
                   variant="caption"
                   onClick={() => setExpanded(p => ({ ...p, [iso]: !p[iso] }))}
@@ -350,6 +382,39 @@ export default function CalendarView({
                   {expanded[iso] ? 'Show less' : `${hidden} more`}
                 </Typography>
               )}
+
+              {/* Inline add, revealed on cell hover. Creating from a day cell is the point
+                  of a calendar: the due date is implied by where you clicked, so it needs
+                  no date picker. Stays open after Enter so a run of cards can be typed. */}
+              {onAddCard && (composing === iso ? (
+                <TextField
+                  size="small"
+                  autoFocus
+                  fullWidth
+                  placeholder="Card title"
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitAdd(iso); }
+                    if (e.key === 'Escape') { setDraft(''); setComposing(null); }
+                  }}
+                  onBlur={() => { setComposing(null); setDraft(''); }}
+                  sx={{ flexShrink: 0, '& .MuiOutlinedInput-input': { py: 0.5, fontSize: 11.5 } }}
+                />
+              ) : (
+                <Typography
+                  className="cal-add"
+                  variant="caption"
+                  onClick={() => { setComposing(iso); setDraft(''); }}
+                  sx={{
+                    px: 0.5, py: 0.25, cursor: 'pointer', flexShrink: 0,
+                    color: 'text.secondary', opacity: 0, transition: 'opacity .12s',
+                    '&:hover': { color: 'text.primary' },
+                  }}
+                >
+                  + Add task
+                </Typography>
+              ))}
             </Box>
           );
         })}

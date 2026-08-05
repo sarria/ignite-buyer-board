@@ -100,6 +100,38 @@ export function parseTyped(text) {
   return `${y}-${pad(m)}-${pad(d)}`;
 }
 
+export function addDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+export function addMonths(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  // Clamp the day so stepping from the 31st doesn't skip a short month.
+  const target = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), Math.min(d, last)))
+    .toISOString().slice(0, 10);
+}
+
+// First day of the week containing `iso`. weekStartsOn: 0 = Sunday, 1 = Monday.
+export function weekStart(iso, weekStartsOn = 1) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return addDays(iso, -((dow - weekStartsOn + 7) % 7));
+}
+
+// 'Aug 3 – 9, 2026' / 'Aug 31 – Sep 6, 2026' for a week range.
+export function weekLabel(startIso) {
+  const endIso = addDays(startIso, 6);
+  const [, sm, sd] = startIso.split('-').map(Number);
+  const [ey, em, ed] = endIso.split('-').map(Number);
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const left = `${M[sm - 1]} ${sd}`;
+  const right = sm === em ? `${ed}` : `${M[em - 1]} ${ed}`;
+  return `${left} – ${right}, ${ey}`;
+}
+
 // The 6x7 grid a month is drawn on, including the adjacent-month days that pad it.
 // Built in UTC so a DST boundary can't drop or duplicate a day.
 // `weekStartsOn`: 0 = Sunday (the date picker, matching Asana's picker), 1 = Monday

@@ -317,11 +317,23 @@ export default function BoardPage() {
     }
   }, [cards, columns, id]);
 
-  const handleAddCard = useCallback(async (columnId, title) => {
-    const created = await createCard(id, { columnId, title });
+  const handleAddCard = useCallback(async (columnId, title, extra = {}) => {
+    const created = await createCard(id, { columnId, title, ...extra });
     setCards(prev => [...prev, created]);
     openCard(created._id); // open the new card so the user can keep filling it in
   }, [id, openCard]);
+
+  // Adding from a calendar day cell. The calendar has no column context, so new cards
+  // land in the FIRST column — the same place the board's own composer would put a card
+  // you hadn't sorted yet. The due date comes from the cell you clicked.
+  // Deliberately does NOT open the drawer: you're usually adding several days at once,
+  // and a drawer over the calendar after each one would fight that.
+  const handleAddCardOnDate = useCallback(async (title, iso) => {
+    const columnId = columns[0]?._id;
+    if (!columnId) return;
+    const created = await createCard(id, { columnId, title, dueDate: iso });
+    setCards(prev => [...prev, created]);
+  }, [id, columns]);
 
   // Optimistic complete/incomplete straight from a card face (calendar's hover check).
   // Flipping locally first keeps the click instant; a failure rolls it back, since a
@@ -542,6 +554,7 @@ export default function BoardPage() {
           selectedCardId={drawerCardId}
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
+          onAddCard={handleAddCardOnDate}
         />
       ) : showArchived ? (
         <ArchivedGrid
