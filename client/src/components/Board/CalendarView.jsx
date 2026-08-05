@@ -30,7 +30,8 @@ const HEALTH_COLORS = {
   'Waiting on DCM': '#2196f3',
 };
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const PER_DAY = 3;                       // before collapsing into "+N more"
+const PER_DAY = 3;                       // before collapsing into "N more"
+const CARD_H = 56;                       // fixed — see CalendarCard for why
 const COLOR_BY_KEY = 'calendar.colorBy';
 
 const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
@@ -47,11 +48,13 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
       onClick={() => onClick(card)}
       sx={{
         display: 'flex', alignItems: 'flex-start', gap: 0.5,
-        // flexShrink + minHeight are load-bearing, not decoration: the day cell is a flex
-        // column, and without them a card whose inner text reports no height (Firefox can
-        // do that with -webkit-box clamping) collapses and the next card draws on top of
-        // it. Height must never depend on the clamped title measuring correctly.
-        flexShrink: 0, minHeight: 34,
+        // FIXED height, and it has to be fixed. Grid row sizing measures a wrapping title
+        // at its unwrapped (max-content) width — one line — so with an auto/minHeight card
+        // the row was sized for short cards, then layout wrapped titles to two lines and
+        // they overflowed into the next week. A definite height is what intrinsic sizing
+        // actually respects, and it gives Asana's uniform card look for free.
+        // Fits: 2 clamped title lines (2.6em @ 11.5px ≈ 30) + meta row (~16) + py (8).
+        flexShrink: 0, height: CARD_H, boxSizing: 'border-box', overflow: 'hidden',
         px: 0.625, py: 0.5, borderRadius: 1.5, cursor: 'pointer',
         bgcolor: tint || 'background.paper',
         // Health as a left edge. Colour is already carrying "colour by" on the fill, so
@@ -260,7 +263,15 @@ export default function CalendarView({
       <Box
         sx={{
           flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(132px, max-content)',
+          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+          // MUST be plain `max-content`. Measured in the browser: `auto` and
+          // `minmax(132px, max-content)` both pinned every row to its minimum and let busy
+          // days spill into the next week. Growing a track from base to growth-limit
+          // happens in grid's "maximize tracks" step, which distributes FREE space — and
+          // there is none here, since the grid already overflows and scrolls. `max-content`
+          // sets the base size directly, so it doesn't need free space. The per-row floor
+          // comes from the cell's own minHeight.
+          gridAutoRows: 'max-content',
           borderTop: 1, borderLeft: 1, borderColor: 'divider',
         }}
       >
@@ -274,7 +285,7 @@ export default function CalendarView({
               key={iso}
               sx={{
                 borderRight: 1, borderBottom: 1, borderColor: 'divider',
-                p: 0.5, minWidth: 0,
+                p: 0.5, minWidth: 0, minHeight: 2 * CARD_H + 30,
                 // Explicit flex column so cards stack predictably. NOT overflow:hidden —
                 // "Show more" has to make the week ROW grow (gridAutoRows max-content),
                 // and clipping an expanded day would hide cards outright, which is worse

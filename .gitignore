@@ -13,3 +13,8 @@ migration/lumina-match-applied-*.json
 
 # External SEM API integration guide (contains a live service token — keep out of git)
 ext-sem-api-guide-asana.md
+
+# Local UI verification shots (scripts/screenshot.mjs)
+*.shot.png
+cal.png
+screenshot.png

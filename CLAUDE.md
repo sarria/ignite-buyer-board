@@ -86,6 +86,7 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 ├── migration/                       # asana-explore.js, asana-migrate.js, asana-seed.js,
 │                                    #   lumina-match.js, README.md (runbook)
 │                                    #   (+ asana-export-rachel.json, gitignored)
+├── scripts/screenshot.mjs           # dev-only: CDP screenshot of a running page (see below)
 ├── vercel.json                      # build client → client/dist, route /api/* to function
 └── CLAUDE.md / SPEC.md / API.md
 ```
@@ -801,6 +802,31 @@ hold inline files, clean them with `s3UrlsInHtml`, not just `attachments[]`.
   Access must allow `0.0.0.0/0` (serverless IPs are dynamic). Don't set `DNS_SERVERS`.
 
 ---
+
+## Verifying UI changes (scripts/screenshot.mjs)
+
+A passing `npm run build` says nothing about layout. Three layout bugs shipped blind
+before this existed — most instructively, `gridAutoRows: minmax(132px, max-content)` on
+the calendar, which *reads* correct and silently pins every row to its minimum.
+
+```bash
+# dev server must already be running (npm run dev)
+node scripts/screenshot.mjs "/boards/<id>?view=calendar" out.png 1500 1000
+```
+
+Drives the installed Edge/Chrome over CDP with Node's built-in `WebSocket` — **no
+Playwright, no browser download, no new dependencies**. It seeds `ACCESS_PASSWORD` into
+localStorage first, or every page is the lock screen.
+
+- `SHOT_WAIT_FOR="<js expr>"` — poll until it's truthy before shooting. **Use it.** A
+  fixed sleep once had me "verify" an empty, still-loading calendar and conclude the
+  layout was fixed.
+- `SHOT_EVAL="<js expr>"` — run an expression in the page and print the result. This is
+  the good bit: measure computed styles and overflow (`scrollHeight > clientHeight`), or
+  A/B candidate CSS live, instead of guessing from pixels. The calendar row bug was
+  settled by trying `auto` / `minmax` / `max-content` in one page visit.
+
+**Look at the PNG.** A blank frame means it didn't load, not that it passed.
 
 ## Code Style
 Plain JS. ES modules (frontend) / CommonJS (backend). Async/await. MUI `sx`, no inline
