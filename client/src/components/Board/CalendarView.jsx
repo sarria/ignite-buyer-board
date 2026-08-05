@@ -6,6 +6,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CheckIcon from '@mui/icons-material/Check';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
@@ -56,14 +57,18 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
         // Fits: 2 clamped title lines (2.6em @ 11.5px ≈ 30) + meta row (~16) + py (8).
         flexShrink: 0, height: CARD_H, boxSizing: 'border-box', overflow: 'hidden',
         px: 0.625, py: 0.5, borderRadius: 1.5, cursor: 'pointer',
-        bgcolor: tint || 'background.paper',
-        // Health as a left edge. Colour is already carrying "colour by" on the fill, so
-        // health gets the edge and Lumina gets an icon — three signals, three channels.
-        borderLeft: '3px solid',
-        borderLeftColor: health ? HEALTH_COLORS[health] : 'transparent',
+        // A DONE card drops its colour entirely (Asana does this): no fill, no health
+        // edge, everything muted. Colour on this board means "needs attention", so a
+        // finished card keeping a bright Health fill competes with live work for the eye.
+        bgcolor: done ? 'transparent' : (tint || 'background.paper'),
+        border: done ? '1px solid' : 0,
+        borderColor: 'divider',
+        borderLeft: done ? '1px solid' : '3px solid',
+        borderLeftColor: done ? 'divider' : (health ? HEALTH_COLORS[health] : 'transparent'),
+        opacity: done ? 0.65 : 1,
         boxShadow: selected
           ? theme => `0 0 0 2px ${theme.palette.primary.main}`
-          : '0 1px 2px rgba(0,0,0,.08)',
+          : done ? 'none' : '0 1px 2px rgba(0,0,0,.08)',
         '&:hover': { filter: 'brightness(0.97)' },
         // Asana's move: the complete button slides in from the left on hover, pushing
         // the content over, and slides back out. Width (not just opacity) is what makes
@@ -74,10 +79,10 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
       <Box
         className="cal-complete"
         sx={{
-          width: done ? 18 : 0,
-          opacity: done ? 1 : 0,
-          mr: done ? 0.25 : 0,
-          overflow: 'hidden', flexShrink: 0,
+          // Hover-only for BOTH states. Done-ness is signalled by the small grey tick
+          // beside the avatar; this button is purely the toggle affordance, and it shows
+          // filled-green on a done card to say "complete — click to undo".
+          width: 0, opacity: 0, overflow: 'hidden', flexShrink: 0,
           transition: 'width .15s ease, opacity .15s ease, margin-right .15s ease',
         }}
       >
@@ -96,11 +101,15 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
 
       {assignee && (
         <Tooltip title={assignee.name}>
-          <Avatar sx={{ width: 18, height: 18, fontSize: 9, bgcolor: userColor(assignee), flexShrink: 0, mt: '1px' }}>
+          <Avatar sx={{ width: 18, height: 18, fontSize: 9, bgcolor: userColor(assignee), flexShrink: 0, mt: '1px', opacity: done ? 0.6 : 1 }}>
             {initials(assignee.name)}
           </Avatar>
         </Tooltip>
       )}
+
+      {/* Done state at rest: a quiet grey tick before the title (Asana's signal), which
+          stays visible while the green toggle slides in on hover. */}
+      {done && <CheckIcon sx={{ fontSize: 13, color: 'text.secondary', flexShrink: 0, mt: '2px' }} />}
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {/* Two-line clamp with a hard maxHeight as the real guarantee — -webkit-box alone

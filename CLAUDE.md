@@ -357,9 +357,13 @@ lists scroll, never the page (mirrors Asana).
   **"Color by" defaults to Health** because seeded columns are all the same default grey
   (Asana sections have no colour), so Column only becomes useful once someone sets colours
   in Board settings → Columns.
+  **A completed card drops its colour entirely** — no fill, no Health edge, faded, with a
+  small grey tick before the title (Asana's treatment). Colour on this board means "needs
+  attention", so a finished card keeping a bright Health fill competes with live work.
   **Hovering a card slides in a complete button from the left** (width transition, so it
-  pushes rather than overlaps — Asana's behaviour) and it stays visible on completed
-  cards. The toggle is optimistic and rolls back on failure: a card that looks done but
+  pushes rather than overlaps — Asana's behaviour) It is hover-only in BOTH states: done-ness is carried by
+  the grey tick, while the button is purely the toggle, showing filled-green on a done
+  card to mean "complete — click to undo". The toggle is optimistic and rolls back on failure: a card that looks done but
   isn't is worse than a click that visibly didn't take.
   **Cards with no due date can't be placed, so they're shown as a `No due date · N` count,
   never silently dropped** — on these boards most cards have no due date (Rachel's: 1,262
