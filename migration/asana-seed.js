@@ -397,6 +397,18 @@ async function main() {
             isComplete: sub.is_complete,
             notes: sub.notes || '',
             dueDate: sub.due_date ? new Date(sub.due_date) : null,
+            // Merge like cards do: keep files a user uploaded here (under
+            // buyer-board/uploads/) and replace only the Asana-migrated ones, so a
+            // re-seed doesn't wipe work done in the app.
+            attachments: [
+              ...(sub.attachments || []).map(a => ({
+                name: a.name, url: a.url, isImage: !!a.is_image, inline: false,
+                createdAt: a.created_at ? new Date(a.created_at) : new Date(),
+              })),
+              ...((await db.collection('subtasks').findOne(
+                { asanaGid: sub.asana_gid }, { projection: { attachments: 1 } }
+              ))?.attachments || []).filter(a => a?.url?.includes('/uploads/')),
+            ],
             // Subtasks carry their own assignee in Asana and the export captured it, but
             // this was hardcoded to null in $setOnInsert — 707 of Team Kathy's 1,464
             // exported subtasks had an assignee and every one was dropped. In $set so a

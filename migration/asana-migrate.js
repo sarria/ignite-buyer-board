@@ -242,6 +242,7 @@ async function main() {
     cardsWithSubtasks: 0,
     totalSubtasks: 0,
     totalSubtaskComments: 0,
+    totalSubtaskAttachments: 0,
     cardsWithAttachments: 0,
     totalAttachments: 0,
     attachmentsSkipped: 0,
@@ -360,6 +361,7 @@ async function main() {
             email: s.assignee.email || null,
           } : null,
           comments: [],
+          attachments: [],
         }));
 
         // Subtask comments. Measured before building this: ~32% of Rachel's subtasks have
@@ -396,6 +398,43 @@ async function main() {
             report.totalSubtaskComments += sub.comments.length;
           } catch (e) {
             report.errors.push({ type: 'subtask-comments', subtask_gid: sub.asana_gid, error: e.message });
+          }
+
+          // Subtask attachments. ~8% of subtasks carry one (measured across 145 real
+          // subtasks on two boards) and they're almost all pasted screenshots — the
+          // performance dashboards buyers grab mid-optimization. Same S3 path and
+          // deterministic key as card attachments, so a re-run skips what's already up.
+          //
+          // Costs a SECOND API call per subtask on top of the comments one. That's the
+          // price of not losing ~600 screenshots on Rachel's board alone.
+          if (S3_ENABLED) {
+            try {
+              const subAtts = await getAll(
+                `/tasks/${sub.asana_gid}/attachments`,
+                '&opt_fields=gid,name,download_url,created_at,host,resource_subtype'
+              );
+              const subFiles = [];
+              for (const att of subAtts) {
+                if (!att.name || !att.download_url) continue;   // external links have no bytes
+                try {
+                  const { url, skipped } = await uploadAttachmentToS3(att, sub.asana_gid);
+                  subFiles.push({
+                    asana_gid: att.gid,
+                    name: att.name,
+                    url,
+                    is_image: IMAGE_RE.test(att.name),
+                    created_at: att.created_at || null,
+                  });
+                  if (skipped) report.attachmentsSkipped++;
+                } catch (e) {
+                  report.errors.push({ type: 'subtask-attachment', subtask_gid: sub.asana_gid, name: att.name, error: e.message });
+                }
+              }
+              sub.attachments = subFiles;
+              report.totalSubtaskAttachments += subFiles.length;
+            } catch (e) {
+              report.errors.push({ type: 'subtask-attachments', subtask_gid: sub.asana_gid, error: e.message });
+            }
           }
         }
 
@@ -516,6 +555,8 @@ async function main() {
   console.log(`Total comments:     ${report.totalComments}`);
   console.log(`Cards w/ subtasks:  ${report.cardsWithSubtasks}`);
   console.log(`Total subtasks:     ${report.totalSubtasks}`);
+  console.log(`Subtask comments:   ${report.totalSubtaskComments}`);
+  console.log(`Subtask files:      ${report.totalSubtaskAttachments}`);
   console.log(`Cards w/ files:     ${report.cardsWithAttachments}`);
   console.log(`Total files→S3:     ${report.totalAttachments} (${report.attachmentsSkipped} already in S3, skipped)`);
   console.log(`Errors:             ${report.errors.length}`);

@@ -88,13 +88,18 @@ async function deleteBoard(req, res) {
 
   const cardIds = cards.map(c => c._id);
   const comments = await db.collection('comments').find({ cardId: { $in: cardIds } }).toArray();
+  const subtasks = await db.collection('subtasks').find({ cardId: { $in: cardIds } }).toArray();
 
-  // Best-effort S3 cleanup of EVERY file this board owns: standalone attachments +
-  // inline images in card descriptions and comment bodies. Non-fatal.
+  // Best-effort S3 cleanup of EVERY file this board owns: card attachments, inline images
+  // in card descriptions and comment bodies (card AND subtask comments — both carry
+  // cardId), and SUBTASK attachments, which are their own files and would otherwise leak.
+  // Non-fatal.
   await deleteUrls([
     ...cards.flatMap(c => (c.attachments || []).map(a => a.url)),
     ...cards.flatMap(c => s3UrlsInHtml(c.descriptionHtml)),
     ...comments.flatMap(c => s3UrlsInHtml(c.bodyHtml)),
+    ...subtasks.flatMap(t => (t.attachments || []).map(a => a.url)),
+    ...subtasks.flatMap(t => s3UrlsInHtml(t.notesHtml)),
   ]);
 
   // Cascade: children first, then the board itself.

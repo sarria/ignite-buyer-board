@@ -58,8 +58,13 @@ async function deleteSubtask(req, res) {
   const db = await getDb();
   const subtaskId = new ObjectId(req.params.id);
 
+  const subtask = await db.collection('subtasks').findOne({ _id: subtaskId });
   const comments = await db.collection('comments').find({ subtaskId }).toArray();
-  await deleteUrls(comments.flatMap(c => s3UrlsInHtml(c.bodyHtml)));
+  await deleteUrls([
+    ...comments.flatMap(c => s3UrlsInHtml(c.bodyHtml)),
+    ...((subtask?.attachments || []).map(a => a.url)),
+    ...s3UrlsInHtml(subtask?.notesHtml),
+  ]);
   await db.collection('comments').deleteMany({ subtaskId });
 
   const result = await db.collection('subtasks').deleteOne({ _id: subtaskId });
@@ -80,4 +85,40 @@ async function reorderSubtasks(req, res) {
   res.status(204).end();
 }
 
-module.exports = { createSubtask, updateSubtask, deleteSubtask, reorderSubtasks };
+// Attachments on a subtask, mirroring the card endpoints. Remove deletes from S3 too —
+// the IAM policy needs s3:DeleteObject (see Files & Images).
+async function addSubtaskAttachment(req, res) {
+  const db = await getDb();
+  const subtaskId = new ObjectId(req.params.id);
+  const { name, url, isImage } = req.body;
+  if (!name || !url) {
+    return res.status(400).json({ error: { message: 'name and url are required', code: 'VALIDATION' } });
+  }
+  const result = await db.collection('subtasks').findOneAndUpdate(
+    { _id: subtaskId },
+    { $push: { attachments: { name, url, isImage: !!isImage, inline: false, createdAt: new Date() } } },
+    { returnDocument: 'after' }
+  );
+  if (!result) return res.status(404).json({ error: { message: 'Subtask not found', code: 'NOT_FOUND' } });
+  res.json(result);
+}
+
+async function removeSubtaskAttachment(req, res) {
+  const db = await getDb();
+  const subtaskId = new ObjectId(req.params.id);
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: { message: 'url is required', code: 'VALIDATION' } });
+  const result = await db.collection('subtasks').findOneAndUpdate(
+    { _id: subtaskId },
+    { $pull: { attachments: { url } } },
+    { returnDocument: 'after' }
+  );
+  if (!result) return res.status(404).json({ error: { message: 'Subtask not found', code: 'NOT_FOUND' } });
+  await deleteUrls([url]);   // best-effort, never blocks the DB change
+  res.json(result);
+}
+
+module.exports = {
+  createSubtask, updateSubtask, deleteSubtask, reorderSubtasks,
+  addSubtaskAttachment, removeSubtaskAttachment,
+};

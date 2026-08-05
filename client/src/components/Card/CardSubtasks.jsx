@@ -156,6 +156,7 @@ export default function CardSubtasks({ cardId, subtasks, onChange, users = [], p
         users={users}
         readOnly={readOnly}
         onSave={data => patch(open._id, data)}
+        onReplace={updated => onChange(subtasks.map(s => (s._id === updated._id ? updated : s)))}
         onDelete={() => handleDelete(open._id)}
         onClose={() => setOpenId(null)}
       />

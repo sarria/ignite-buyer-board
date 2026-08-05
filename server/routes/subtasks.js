@@ -10,6 +10,9 @@ const router = Router();
 router.get('/:id/comments', commentCtrl.listSubtaskComments);
 router.post('/:id/comments', commentCtrl.createSubtaskComment);
 
+router.post('/:id/attachments', c.addSubtaskAttachment);
+router.delete('/:id/attachments', c.removeSubtaskAttachment);
+
 router.put('/:id', c.updateSubtask);
 router.delete('/:id', c.deleteSubtask);
 

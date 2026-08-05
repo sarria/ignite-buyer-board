@@ -67,8 +67,9 @@ node migration/asana-migrate.js --project=1205337491932125   # T Tots
 - `--out` optional; otherwise derived from the project's real name
   (`asana-export-team-kathy.json`). Always written into `migration/`.
 - **This is the slow, expensive step**: it uploads every Asana attachment to S3, and since
-  2026-08-04 it also fetches comments for **every subtask** — one extra API call each
-  (~7.7k for Rachel's board, roughly 20 extra minutes). Asana exposes no comment count to
+  2026-08-04 it also fetches comments AND attachments for **every subtask** — two extra API
+  calls each (~15k for Rachel's board, roughly 40 extra minutes), plus downloading and
+  uploading the ~8% of subtasks that carry a file. Asana exposes no comment count to
   filter on, so there's no way to ask only the subtasks that have them. Worth it: ~32% of
   subtasks carry comments and they were being dropped entirely.
   Resumable — S3 keys are deterministic (`buyer-board/{taskGid}/{attGid}-{name}`) and
@@ -208,7 +209,7 @@ working in the app, see *Once the boards are in real use* below.
 > **Boards imported before 2026-08-04 are missing subtask comments and assignees.** The
 > assignees can be backfilled from the existing export (they were captured, just dropped by
 > the seeder), but **comments were never exported** — recovering those needs a full
-> re-migrate of that board.
+> re-migrate of that board. The same is true of subtask attachments (added 2026-08-05).
 6. **Verify** — step 5.
 
 Note the board gets a **new `_id`**, so old deep links (`?card=…`) and bookmarks break.

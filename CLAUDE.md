@@ -138,6 +138,7 @@ app_settings`
 { _id, cardId, title, assigneeId, dueDate, isComplete,
   notes,        // plain text (what the Asana import wrote)
   notesHtml,    // rich HTML; null if plain — same pairing as a card's description
+  attachments: [ { name, url /*S3*/, isImage, inline, createdAt } ],
   position, asanaGid, createdAt }
 
 // comments  (a comment belongs to a CARD or to a SUBTASK)
@@ -194,6 +195,7 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
            POST /cards/:id/attachments {name,url,isImage} · DELETE /cards/:id/attachments {url} (also deletes from S3)
 Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · DELETE /subtasks/:id
            PUT /subtasks/:id {title,assigneeId,dueDate,isComplete,notes,notesHtml}
+           POST /subtasks/:id/attachments {name,url,isImage} · DELETE (also deletes from S3)
 Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id · DELETE(admin) /comments/:id
            GET/POST /subtasks/:id/comments — the subtask thread
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
@@ -438,6 +440,9 @@ lists scroll, never the page (mirrors Asana).
   title. A modal, not a nested drawer: the card drawer is already a right-hand panel and
   sliding a second one out of it makes "close" ambiguous. Read-only follows the parent card
   (completed/archived), which is why a completed card shows no `Add subtask`.
+  **Subtask attachments are supported too** — ~8% of imported subtasks carry one (measured
+  across 145), almost always a pasted performance screenshot. Same S3 path and presigned
+  upload as card attachments.
   **Subtask comments ARE supported** (built 2026-08-04 after measuring 40% usage on
   Rachel's board). A subtask comment carries BOTH `subtaskId` and `cardId` — the cardId is
   denormalised so the card and board delete cascades reach it without knowing subtasks
@@ -847,7 +852,10 @@ must be scanned.
 
 Current cascade/cleanup per entity:
 - **Card** (hard-delete only when empty): S3-delete its `attachments[]` + inline images
-  in `descriptionHtml`, then the doc. (Non-empty cards archive instead of delete.)
+  in `descriptionHtml`, then the doc. (Non-empty cards archive instead of delete — and
+  "empty" requires 0 subtasks, which is why this path never has subtask files to clean.)
+- **Subtask**: S3-delete its `attachments[]`, inline images in `notesHtml`, and the inline
+  images of its comments; delete those comments; then the doc.
 - **Comment** (admin delete): S3-delete inline images in `bodyHtml`, then the doc.
 - **Column**: deletable only when it holds no cards (409 otherwise) — nothing else to clean.
 - **Field**: after deleting the field doc, `$pull` its `fieldValues` from every card so no
@@ -855,7 +863,9 @@ Current cascade/cleanup per entity:
 - **Template**: no children/files.
 - **Board** (cascade; deletable only when empty OR archived): delete all `cards`,
   `subtasks`, `comments`, `columns`, `custom_fields`, `card_templates`; S3-delete every
-  card attachment + inline image (descriptions AND comments); then the board doc.
+  card attachment + inline image (descriptions AND comments, card and subtask alike, since
+  subtask comments carry `cardId`) **and every subtask attachment + `notesHtml` image** —
+  subtasks own files of their own, which leaked before 2026-08-05; then the board doc.
 
 **Rule for the future — keep this current:** any NEW per-board collection, child entity,
 or file-bearing field MUST be wired into (a) its own delete path and (b) the **board
@@ -928,9 +938,6 @@ All route handlers try/catch → central error middleware; error shape
   amount on a record where Lumina's own page showed `$0`. Open question for Lumina: the form's "Buyer" showed a different name than
   `buyerSearchUsernameDisplay` on one spot-check — but every other buyer role on that
   record is null, so the screenshot was most likely stale.
-- **Subtask attachments** — 8 of 75 sampled subtasks (~11%) have one. Subtask comments
-  are done; attachments are the remaining gap. Lower priority than
-  comments, same shape of work.
 - **NOT worth building on subtasks** (measured 2026-08-04, 75 sampled across two boards):
   **dependencies — 0**, **nested sub-subtasks — 0**. Asana offers both; nobody here uses
   either.
