@@ -241,6 +241,7 @@ async function main() {
     totalComments: 0,
     cardsWithSubtasks: 0,
     totalSubtasks: 0,
+    totalSubtaskComments: 0,
     cardsWithAttachments: 0,
     totalAttachments: 0,
     attachmentsSkipped: 0,
@@ -356,8 +357,47 @@ async function main() {
           assignee: s.assignee ? {
             asana_gid: s.assignee.gid,
             name: s.assignee.name,
+            email: s.assignee.email || null,
           } : null,
+          comments: [],
         }));
+
+        // Subtask comments. Measured before building this: ~32% of Rachel's subtasks have
+        // at least one (~0.5 per subtask, ~3.6k threads on that board alone), and they're
+        // real optimization notes — the content this app exists to hold. They were being
+        // dropped entirely.
+        //
+        // Costs ONE extra request per subtask, because Asana exposes no comment count to
+        // filter on: ~7.7k extra calls for Rachel's board, roughly 20 minutes at the
+        // configured rate limit. That's the price of not losing the data.
+        //
+        // No inline-image handling here on purpose: 0 of 60 sampled subtask comments
+        // contained an <img>, so subtask attachments aren't fetched and there is nothing
+        // to rewrite. If that ever changes, images would break — see the card path.
+        for (const sub of card.subtasks) {
+          try {
+            const subStories = await getAll(
+              `/tasks/${sub.asana_gid}/stories`,
+              '&opt_fields=gid,type,text,html_text,created_at,created_by.gid,created_by.name,created_by.email'
+            );
+            sub.comments = subStories
+              .filter(st => st.type === 'comment' && (st.text || st.html_text))
+              .map(st => ({
+                asana_gid: st.gid,
+                body: st.text || '',
+                body_html_raw: st.html_text || null,
+                created_at: st.created_at,
+                author: st.created_by ? {
+                  asana_gid: st.created_by.gid,
+                  name: st.created_by.name,
+                  email: st.created_by.email || null,
+                } : null,
+              }));
+            report.totalSubtaskComments += sub.comments.length;
+          } catch (e) {
+            report.errors.push({ type: 'subtask-comments', subtask_gid: sub.asana_gid, error: e.message });
+          }
+        }
 
         if (subtasks.length > 0) {
           report.cardsWithSubtasks++;

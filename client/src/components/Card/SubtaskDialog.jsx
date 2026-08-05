@@ -11,6 +11,8 @@ import DueDatePicker from '../common/DueDatePicker';
 import RichTextField from '../common/RichTextField';
 import RichContent from '../common/RichContent';
 import Linkify from '../../utils/linkify';
+import CardComments from './CardComments';
+import { getSubtaskComments, createSubtaskComment } from '../../api/comments';
 import { userColor } from '../../utils/userColor';
 
 // Detail view for one subtask. Subtasks already carried assignee/dueDate/notes in the
@@ -42,6 +44,19 @@ export default function SubtaskDialog({
 }) {
   const [title, setTitle] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
+  const [comments, setComments] = useState([]);
+
+  // Fetched when the dialog opens rather than shipped with the card: a card can carry
+  // 28 subtasks, and pre-loading every thread would bloat the card payload for threads
+  // nobody opens.
+  useEffect(() => {
+    if (!open || !subtask?._id) { setComments([]); return undefined; }
+    let cancelled = false;
+    getSubtaskComments(subtask._id)
+      .then(d => { if (!cancelled) setComments(d); })
+      .catch(() => { if (!cancelled) setComments([]); });
+    return () => { cancelled = true; };
+  }, [open, subtask?._id]);
 
   // Reset local drafts whenever a different subtask opens, or the title/notes of the
   // current one change underneath us.
@@ -176,6 +191,15 @@ export default function SubtaskDialog({
                   </Typography>}
           </Box>
         )}
+        <Divider sx={{ my: 2 }} />
+
+        {/* Same thread component as a card — 40% of Rachel's subtasks carry comments in
+            Asana, and they're optimization notes, not chatter. */}
+        <CardComments
+          comments={comments}
+          onChange={setComments}
+          onCreate={payload => createSubtaskComment(subtask._id, payload)}
+        />
       </DialogContent>
     </Dialog>
   );

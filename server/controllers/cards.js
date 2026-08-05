@@ -95,7 +95,13 @@ async function getCard(req, res) {
   if (!card) return res.status(404).json({ error: { message: 'Card not found', code: 'NOT_FOUND' } });
 
   const [comments, subtasks] = await Promise.all([
-    db.collection('comments').find({ cardId }).sort({ createdAt: 1 }).toArray(),
+    // subtaskId must be excluded: subtask comments carry cardId too (so the card/board
+    // delete cascades reach them), so an unfiltered query pulls a subtask's notes into
+    // its parent's thread. Same filter as listComments.
+    db.collection('comments')
+      .find({ cardId, subtaskId: { $in: [null, undefined] } })
+      .sort({ createdAt: 1 })
+      .toArray(),
     db.collection('subtasks').find({ cardId }).sort({ position: 1 }).toArray(),
   ]);
   res.json({ ...card, comments, subtasks });

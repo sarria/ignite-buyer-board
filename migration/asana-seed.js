@@ -398,6 +398,36 @@ async function main() {
         { upsert: true }
       );
       report.subtasks.total++;
+
+      // Subtask comments. Need the subtask's _id, which the upsert above doesn't return,
+      // so look it up — only when there are comments to attach, to avoid a query per
+      // subtask on boards that have none.
+      if ((sub.comments || []).length) {
+        const subDoc = await db.collection('subtasks').findOne(
+          { asanaGid: sub.asana_gid }, { projection: { _id: 1 } }
+        );
+        for (const comment of sub.comments) {
+          await db.collection('comments').updateOne(
+            { asanaGid: comment.asana_gid },
+            {
+              $set: {
+                cardId,                 // denormalised so card/board cascades reach it
+                subtaskId: subDoc._id,
+                authorId: null,
+                body: comment.body,
+                bodyHtml: comment.body_html || null,
+                isMigrated: true,
+                migratedAuthorName: comment.author?.name || 'Unknown',
+                migratedAuthorEmail: comment.author?.email || null,
+                asanaGid: comment.asana_gid,
+                createdAt: new Date(comment.created_at),
+              },
+            },
+            { upsert: true }
+          );
+          report.subtaskComments = (report.subtaskComments || 0) + 1;
+        }
+      }
     }
 
     // Upsert comments (preserve original timestamps)
@@ -432,6 +462,7 @@ async function main() {
   console.log(`Board:         ${data.project.name} (${boardId})`);
   console.log(`Cards:         ${report.cards.inserted} inserted, ${report.cards.updated} updated, ${report.cards.skipped} skipped`);
   console.log(`Subtasks:      ${report.subtasks.total}`);
+  console.log(`Subtask comments: ${report.subtaskComments || 0}`);
   console.log(`Comments:      ${report.comments.total}`);
   console.log(`Users:         ${seenEmails.size}`);
   console.log(`Columns kept:  ${data.columns.length - skipColumns.size}`);

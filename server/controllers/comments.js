@@ -4,11 +4,53 @@ const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
 const { s3UrlsInHtml, deleteUrls } = require('../lib/s3');
 
+// A comment belongs to a CARD or to a SUBTASK. Subtask comments keep `cardId` as well as
+// `subtaskId` — that's what lets the card and board delete cascades reach them without
+// knowing subtasks exist. The trade-off is that every card-thread query MUST exclude them,
+// or a subtask's notes leak into its parent's thread.
+const CARD_THREAD = { $in: [null, undefined] };
+
 async function listComments(req, res) {
   const db = await getDb();
   const cardId = new ObjectId(req.params.id);
-  const comments = await db.collection('comments').find({ cardId }).sort({ createdAt: 1 }).toArray();
+  const comments = await db.collection('comments')
+    .find({ cardId, subtaskId: CARD_THREAD })
+    .sort({ createdAt: 1 })
+    .toArray();
   res.json(comments);
+}
+
+async function listSubtaskComments(req, res) {
+  const db = await getDb();
+  const subtaskId = new ObjectId(req.params.id);
+  const comments = await db.collection('comments')
+    .find({ subtaskId })
+    .sort({ createdAt: 1 })
+    .toArray();
+  res.json(comments);
+}
+
+async function createSubtaskComment(req, res) {
+  const db = await getDb();
+  const subtaskId = new ObjectId(req.params.id);
+  const { body, bodyHtml } = req.body;
+  if ((!body || !body.trim()) && (!bodyHtml || !bodyHtml.trim())) {
+    return res.status(400).json({ error: { message: 'body is required', code: 'VALIDATION' } });
+  }
+  const subtask = await db.collection('subtasks').findOne({ _id: subtaskId }, { projection: { cardId: 1 } });
+  if (!subtask) return res.status(404).json({ error: { message: 'Subtask not found', code: 'NOT_FOUND' } });
+
+  const doc = {
+    cardId: subtask.cardId,   // denormalised so the card/board cascades still reach it
+    subtaskId,
+    authorId: new ObjectId(req.user._id),
+    body: (body || '').trim(),
+    bodyHtml: bodyHtml || null,
+    isMigrated: false,
+    createdAt: new Date(),
+  };
+  const result = await db.collection('comments').insertOne(doc);
+  res.status(201).json({ ...doc, _id: result.insertedId });
 }
 
 async function createComment(req, res) {
@@ -71,4 +113,7 @@ async function deleteComment(req, res) {
   res.status(204).end();
 }
 
-module.exports = { listComments, createComment, updateComment, deleteComment };
+module.exports = {
+  listComments, createComment, updateComment, deleteComment,
+  listSubtaskComments, createSubtaskComment,
+};

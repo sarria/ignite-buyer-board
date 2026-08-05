@@ -2,6 +2,7 @@
 
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
+const { s3UrlsInHtml, deleteUrls } = require('../lib/s3');
 
 async function createSubtask(req, res) {
   const db = await getDb();
@@ -50,9 +51,17 @@ async function updateSubtask(req, res) {
   res.json(result);
 }
 
+// Deleting a subtask takes its comments with it — and any inline images those comments
+// hold (see Deletion & Cleanup Rules; inline images live in bodyHtml, not attachments[]).
+// S3 cleanup is best-effort and must never block the DB delete.
 async function deleteSubtask(req, res) {
   const db = await getDb();
   const subtaskId = new ObjectId(req.params.id);
+
+  const comments = await db.collection('comments').find({ subtaskId }).toArray();
+  await deleteUrls(comments.flatMap(c => s3UrlsInHtml(c.bodyHtml)));
+  await db.collection('comments').deleteMany({ subtaskId });
+
   const result = await db.collection('subtasks').deleteOne({ _id: subtaskId });
   if (result.deletedCount === 0) return res.status(404).json({ error: { message: 'Subtask not found', code: 'NOT_FOUND' } });
   res.status(204).end();

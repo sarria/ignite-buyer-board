@@ -23,12 +23,16 @@ function formatDate(d) {
   });
 }
 
-export default function CardComments({ cardId, comments, onChange }) {
+// `onCreate` lets the same thread serve a subtask (see SubtaskDialog) — everything else
+// about rendering a comment is identical, and forking the component would guarantee the
+// two drift.
+export default function CardComments({ cardId, comments, onChange, onCreate, heading = 'Comments' }) {
   const [editorKey, setEditorKey] = useState(0); // bump to reset the composer
   const [editingId, setEditingId] = useState(null);
 
   const handleAdd = async (html) => {
-    const created = await createComment(cardId, { body: stripHtml(html), bodyHtml: html });
+    const payload = { body: stripHtml(html), bodyHtml: html };
+    const created = onCreate ? await onCreate(payload) : await createComment(cardId, payload);
     onChange([...comments, created]);
     setEditorKey(k => k + 1); // reset composer
   };
@@ -42,7 +46,7 @@ export default function CardComments({ cardId, comments, onChange }) {
   return (
     <Box>
       <Typography variant="subtitle2" fontWeight={700} mb={1.5}>
-        Comments {comments.length > 0 && `(${comments.length})`}
+        {heading} {comments.length > 0 && `(${comments.length})`}
       </Typography>
 
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>

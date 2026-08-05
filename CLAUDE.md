@@ -140,8 +140,8 @@ app_settings`
   notesHtml,    // rich HTML; null if plain — same pairing as a card's description
   position, asanaGid, createdAt }
 
-// comments
-{ _id, cardId, authorId /*null for migrated*/,
+// comments  (a comment belongs to a CARD or to a SUBTASK)
+{ _id, cardId, subtaskId /*null for card comments*/, authorId /*null for migrated*/,
   body,                   // plain text
   bodyHtml,               // rich HTML w/ inline images (null if plain)
   isMigrated, migratedAuthorName, migratedAuthorEmail,
@@ -192,7 +192,8 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
            POST /cards/:id/attachments {name,url,isImage} · DELETE /cards/:id/attachments {url} (also deletes from S3)
 Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · DELETE /subtasks/:id
            PUT /subtasks/:id {title,assigneeId,dueDate,isComplete,notes,notesHtml}
-Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body, bodyHtml} · DELETE(admin) /comments/:id
+Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id · DELETE(admin) /comments/:id
+           GET/POST /subtasks/:id/comments — the subtask thread
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
 Settings   GET /settings/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
            PUT(admin) {hiddenLineItemFields[], hiddenAdvertiserFields[]} · DELETE(admin) = back to "show all"
@@ -421,8 +422,15 @@ lists scroll, never the page (mirrors Asana).
   title. A modal, not a nested drawer: the card drawer is already a right-hand panel and
   sliding a second one out of it makes "close" ambiguous. Read-only follows the parent card
   (completed/archived), which is why a completed card shows no `Add subtask`.
-  **Subtask comments are NOT supported** — `comments` are keyed by `cardId`, so they need a
-  schema change; worth doing deliberately rather than smuggling into a UI change.
+  **Subtask comments ARE supported** (built 2026-08-04 after measuring 40% usage on
+  Rachel's board). A subtask comment carries BOTH `subtaskId` and `cardId` — the cardId is
+  denormalised so the card and board delete cascades reach it without knowing subtasks
+  exist. **The cost: every card-thread query must exclude `subtaskId`**, or a subtask's
+  notes leak into its parent's thread. Two places do this — `listComments` AND `getCard`;
+  missing the second is exactly the bug that shipped-then-got-caught here. Deleting a
+  subtask deletes its comments and their inline S3 images.
+  Threads load when the dialog opens, not with the card: a card can carry 28 subtasks and
+  pre-loading every thread would bloat the payload for threads nobody opens.
 - **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
   inside Collapsible "See more"). Migrated comments show "Imported from Asana".
 - **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
@@ -899,12 +907,8 @@ All route handlers try/catch → central error middleware; error shape
   amount on a record where Lumina's own page showed `$0`. Open question for Lumina: the form's "Buyer" showed a different name than
   `buyerSearchUsernameDisplay` on one spot-check — but every other buyer role on that
   record is null, so the screenshot was most likely stale.
-- **Subtask comments — MEASURED AS USED, NOT YET BUILT.** Sampling real Asana subtasks:
-  **18 of 45 on Rachel's board (40%) have comments**, vs 0 of 30 on Team Kathy's. The
-  migration never captured them (a subtask export is title/notes/due/assignee/complete
-  only), so ~3,000 of Rachel's subtask comment threads are NOT in the app. Needs: a
-  `subtaskId` on `comments`, capture in `asana-migrate`, and a thread in `SubtaskDialog`.
-- **Subtask attachments** — 8 of 75 sampled subtasks (~11%) have one. Lower priority than
+- **Subtask attachments** — 8 of 75 sampled subtasks (~11%) have one. Subtask comments
+  are done; attachments are the remaining gap. Lower priority than
   comments, same shape of work.
 - **NOT worth building on subtasks** (measured 2026-08-04, 75 sampled across two boards):
   **dependencies — 0**, **nested sub-subtasks — 0**. Asana offers both; nobody here uses
