@@ -135,7 +135,10 @@ app_settings`
   asanaGid, asanaProjectGid, createdAt, updatedAt }
 
 // subtasks
-{ _id, cardId, title, assigneeId, dueDate, isComplete, notes, position, asanaGid, createdAt }
+{ _id, cardId, title, assigneeId, dueDate, isComplete,
+  notes,        // plain text (what the Asana import wrote)
+  notesHtml,    // rich HTML; null if plain — same pairing as a card's description
+  position, asanaGid, createdAt }
 
 // comments
 { _id, cardId, authorId /*null for migrated*/,
@@ -187,7 +190,8 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
            PUT /cards/:id/move {columnId,position} · PUT /cards/:id/move-board {boardId,columnId}
            PUT /cards/:id/fields { fieldId: value, ... }
            POST /cards/:id/attachments {name,url,isImage} · DELETE /cards/:id/attachments {url} (also deletes from S3)
-Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · PUT /subtasks/:id · DELETE /subtasks/:id
+Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · DELETE /subtasks/:id
+           PUT /subtasks/:id {title,assigneeId,dueDate,isComplete,notes,notesHtml}
 Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id {body, bodyHtml} · DELETE(admin) /comments/:id
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
 Settings   GET /settings/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
@@ -410,7 +414,9 @@ lists scroll, never the page (mirrors Asana).
   `Add subtask` sits at the **END of the list** (Asana's placement — you decide to add one
   after reading what's there, not from a header `+`) and the composer stays open after
   Enter, since subtasks arrive in runs ("Opts 6.3", "Opts 7.3", …).
-  **SubtaskDialog** edits title / assignee / due date / notes — all four were already in
+  **SubtaskDialog** edits title / assignee / due date / **rich description** (the same
+  RichTextField as a card, because subtask notes are where buyers paste KPI blocks and
+  screenshots; `notes`/`notesHtml` mirror a card's `description`/`descriptionHtml`) — all four were already in
   the schema and accepted by `PUT /subtasks/:id`, but unreachable, so a subtask was a bare
   title. A modal, not a nested drawer: the card drawer is already a right-hand panel and
   sliding a second one out of it makes "close" ambiguous. Read-only follows the parent card
@@ -724,6 +730,11 @@ troubleshooting. This section covers what the scripts *are*; the runbook covers 
   url vs text inferred from values).
 - `--auto` skips prompts: archive columns matching `cancelled`/`completed campaign`,
   skip `duplicate`. **Archived = archive-named column only** (NOT completion).
+- **Subtask assignees**: `assigneeId` was hardcoded `null`, dropping every one (707 of Team
+  Kathy's 1,464 exported subtasks had one). Now mapped, and the user upsert is built from
+  card **and subtask** assignees — 5 of Kathy's 10 subtask assignees never assign a card,
+  so building it from cards alone missed them. Exports made before 2026-08-04 lack
+  `assignee.email` on subtasks, so those fall back to matching an existing user by name.
 - Seeds cards (preserve createdAt), subtasks, comments (preserve timestamps,
   `migratedAuthorName`, `bodyHtml`), tags, attachments, `isCompleted/completedAt`,
   `descriptionHtml`.
@@ -888,6 +899,16 @@ All route handlers try/catch → central error middleware; error shape
   amount on a record where Lumina's own page showed `$0`. Open question for Lumina: the form's "Buyer" showed a different name than
   `buyerSearchUsernameDisplay` on one spot-check — but every other buyer role on that
   record is null, so the screenshot was most likely stale.
+- **Subtask comments — MEASURED AS USED, NOT YET BUILT.** Sampling real Asana subtasks:
+  **18 of 45 on Rachel's board (40%) have comments**, vs 0 of 30 on Team Kathy's. The
+  migration never captured them (a subtask export is title/notes/due/assignee/complete
+  only), so ~3,000 of Rachel's subtask comment threads are NOT in the app. Needs: a
+  `subtaskId` on `comments`, capture in `asana-migrate`, and a thread in `SubtaskDialog`.
+- **Subtask attachments** — 8 of 75 sampled subtasks (~11%) have one. Lower priority than
+  comments, same shape of work.
+- **NOT worth building on subtasks** (measured 2026-08-04, 75 sampled across two boards):
+  **dependencies — 0**, **nested sub-subtasks — 0**. Asana offers both; nobody here uses
+  either.
 - **Import Asana task templates** (templates are not exported/seeded yet).
 - **Private S3 bucket** via presigned/CloudFront (currently public).
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during

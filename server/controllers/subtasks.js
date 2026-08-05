@@ -29,13 +29,17 @@ async function createSubtask(req, res) {
 async function updateSubtask(req, res) {
   const db = await getDb();
   const subtaskId = new ObjectId(req.params.id);
-  const { title, assigneeId, dueDate, isComplete, notes } = req.body;
+  const { title, assigneeId, dueDate, isComplete, notes, notesHtml } = req.body;
   const $set = {};
   if (title !== undefined) $set.title = title;
   if (assigneeId !== undefined) $set.assigneeId = assigneeId ? new ObjectId(assigneeId) : null;
   if (dueDate !== undefined) $set.dueDate = dueDate ? new Date(dueDate) : null;
   if (isComplete !== undefined) $set.isComplete = isComplete;
   if (notes !== undefined) $set.notes = notes;
+  // Rich notes mirror a card's description/descriptionHtml pair: `notes` stays the
+  // plain-text version (what the Asana import wrote, and what search would use),
+  // `notesHtml` is the rendered one. null = plain.
+  if (notesHtml !== undefined) $set.notesHtml = notesHtml;
 
   const result = await db.collection('subtasks').findOneAndUpdate(
     { _id: subtaskId },

@@ -233,22 +233,42 @@ async function main() {
   // 7. Build user map from assignees in the export
   console.log('\n[7] Upserting users from assignees...');
   const assigneeMap = {};
+  const nameMap = {};          // name -> userId, the fallback for gids we can't upsert
   const seenEmails = new Set();
+
+  // Subtask assignees count too — 5 of Team Kathy's 10 never assign a CARD, so building
+  // this from cards alone silently dropped them.
+  const people = [];
   for (const card of data.cards) {
-    if (card.assignee && card.assignee.email && !seenEmails.has(card.assignee.email)) {
-      seenEmails.add(card.assignee.email);
-      const result = await db.collection('users').findOneAndUpdate(
-        { email: card.assignee.email },
-        {
-          $set: { name: card.assignee.name, email: card.assignee.email },
-          $setOnInsert: { role: 'member', createdAt: new Date() },
-        },
-        { upsert: true, returnDocument: 'after' }
-      );
-      assigneeMap[card.assignee.asana_gid] = result._id;
-    }
+    if (card.assignee) people.push(card.assignee);
+    for (const sub of card.subtasks || []) if (sub.assignee) people.push(sub.assignee);
   }
-  console.log(`  ${seenEmails.size} users upserted.`);
+
+  for (const person of people) {
+    // Exports made before assignee.email was requested for subtasks have name only. We
+    // can't invent an email, so those fall back to matching an existing user by name.
+    if (!person.email) continue;
+    if (seenEmails.has(person.email)) continue;
+    seenEmails.add(person.email);
+    const result = await db.collection('users').findOneAndUpdate(
+      { email: person.email },
+      {
+        $set: { name: person.name, email: person.email },
+        $setOnInsert: { role: 'member', createdAt: new Date() },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+    assigneeMap[person.asana_gid] = result._id;
+    nameMap[person.name] = result._id;
+  }
+  // Names we saw but couldn't upsert (no email) — resolve against users already in the DB.
+  for (const person of people) {
+    if (assigneeMap[person.asana_gid]) continue;
+    if (nameMap[person.name]) { assigneeMap[person.asana_gid] = nameMap[person.name]; continue; }
+    const existing = await db.collection('users').findOne({ name: person.name });
+    if (existing) { assigneeMap[person.asana_gid] = existing._id; nameMap[person.name] = existing._id; }
+  }
+  console.log(`  ${seenEmails.size} users upserted, ${Object.keys(assigneeMap).length} assignees mapped.`);
 
   // 8. Upsert cards + subtasks + comments
   console.log(`\n[8] Upserting cards, subtasks, and comments...`);
@@ -363,11 +383,15 @@ async function main() {
             isComplete: sub.is_complete,
             notes: sub.notes || '',
             dueDate: sub.due_date ? new Date(sub.due_date) : null,
+            // Subtasks carry their own assignee in Asana and the export captured it, but
+            // this was hardcoded to null in $setOnInsert — 707 of Team Kathy's 1,464
+            // exported subtasks had an assignee and every one was dropped. In $set so a
+            // re-seed backfills the boards already imported.
+            assigneeId: sub.assignee?.asana_gid ? (assigneeMap[sub.assignee.asana_gid] || null) : null,
             asanaGid: sub.asana_gid,
           },
           $setOnInsert: {
             position: si,
-            assigneeId: null,
             createdAt: new Date(sub.created_at),
           },
         },

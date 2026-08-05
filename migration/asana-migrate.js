@@ -344,7 +344,7 @@ async function main() {
       try {
         const subtasks = await getAll(
           `/tasks/${task.gid}/subtasks`,
-          '&opt_fields=gid,name,assignee.gid,assignee.name,due_on,completed,notes,created_at'
+          '&opt_fields=gid,name,assignee.gid,assignee.name,assignee.email,due_on,completed,notes,created_at'
         );
         card.subtasks = subtasks.map(s => ({
           asana_gid: s.gid,

@@ -8,6 +8,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/Delete';
 import DueDatePicker from '../common/DueDatePicker';
+import RichTextField from '../common/RichTextField';
+import RichContent from '../common/RichContent';
+import Linkify from '../../utils/linkify';
 import { userColor } from '../../utils/userColor';
 
 // Detail view for one subtask. Subtasks already carried assignee/dueDate/notes in the
@@ -38,14 +41,14 @@ export default function SubtaskDialog({
   open, subtask, parentTitle, users = [], readOnly = false, onSave, onDelete, onClose,
 }) {
   const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
+  const [editingNotes, setEditingNotes] = useState(false);
 
   // Reset local drafts whenever a different subtask opens, or the title/notes of the
   // current one change underneath us.
   useEffect(() => {
     setTitle(subtask?.title || '');
-    setNotes(subtask?.notes || '');
-  }, [subtask?._id, subtask?.title, subtask?.notes]);
+    setEditingNotes(false);
+  }, [subtask?._id, subtask?.title]);
 
   if (!subtask) return null;
   const done = !!subtask.isComplete;
@@ -56,9 +59,6 @@ export default function SubtaskDialog({
     const v = title.trim();
     if (v && v !== subtask.title) onSave({ title: v });
     else setTitle(subtask.title || '');
-  };
-  const commitNotes = () => {
-    if (notes !== (subtask.notes || '')) onSave({ notes });
   };
 
   return (
@@ -144,17 +144,38 @@ export default function SubtaskDialog({
         <Divider sx={{ my: 1.5 }} />
 
         <Typography variant="subtitle2" fontWeight={700} mb={1}>Description</Typography>
-        <TextField
-          fullWidth
-          multiline
-          minRows={4}
-          placeholder={readOnly ? 'No description' : 'Add more detail…'}
-          value={notes}
-          disabled={readOnly}
-          onChange={e => setNotes(e.target.value)}
-          onBlur={commitNotes}
-          slotProps={{ input: { sx: { fontSize: 14 } } }}
-        />
+        {/* Same editor as a card's description — a subtask description is where buyers
+            paste KPI blocks and screenshots, so plain text wasn't enough. Imported notes
+            are plain text, so fall back to `notes` until it's edited once. */}
+        {editingNotes && !readOnly ? (
+          <RichTextField
+            key={`sub-notes-${subtask._id}`}
+            initialValue={subtask.notesHtml || subtask.notes || ''}
+            minHeight={140}
+            onSave={async (html) => {
+              await onSave({ notes: html.replace(/<[^>]*>/g, '').trim(), notesHtml: html });
+              setEditingNotes(false);
+            }}
+            onCancel={() => setEditingNotes(false)}
+          />
+        ) : (
+          <Box
+            onClick={() => { if (!readOnly) setEditingNotes(true); }}
+            sx={{
+              minHeight: 60, p: 1, borderRadius: 1,
+              cursor: readOnly ? 'default' : 'text',
+              '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover' },
+            }}
+          >
+            {subtask.notesHtml
+              ? <RichContent html={subtask.notesHtml} />
+              : subtask.notes
+                ? <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}><Linkify text={subtask.notes} /></Typography>
+                : <Typography variant="body2" color="text.secondary">
+                    {readOnly ? 'No description' : 'Add more detail…'}
+                  </Typography>}
+          </Box>
+        )}
       </DialogContent>
     </Dialog>
   );
