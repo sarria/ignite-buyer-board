@@ -37,6 +37,7 @@ const PER_DAY = 3;                       // before collapsing into "N more" (Mon
 const CARD_H = 56;                       // fixed — see CalendarCard for why
 const COLOR_BY_KEY = 'calendar.colorBy';
 const MODE_KEY = 'calendar.mode';        // 'month' | 'week'
+const WEEKENDS_KEY = 'calendar.weekends';
 
 const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 
@@ -186,6 +187,10 @@ export default function CalendarView({
   const [colorBy, setColorBy] = useState(() => {
     try { return localStorage.getItem(COLOR_BY_KEY) || 'health'; } catch { return 'health'; }
   });
+  // Most buying work is weekday-only, so hiding Sat/Sun buys ~30% more width per day.
+  const [weekends, setWeekends] = useState(() => {
+    try { return (localStorage.getItem(WEEKENDS_KEY) || 'show') === 'show'; } catch { return true; }
+  });
   const persist = (key, v, set) => {
     set(v);
     try { localStorage.setItem(key, v); } catch { /* ignore */ }
@@ -234,6 +239,18 @@ export default function CalendarView({
     })
     : monthGrid(ay, am - 1, 1);
 
+  // Weeks start Monday, so within every run of 7 the weekend is always indexes 5 and 6 —
+  // true for the month grid (6x7) and the single week alike.
+  const visibleGrid = weekends ? grid : grid.filter((_, i) => i % 7 < 5);
+  const colCount = weekends ? 7 : 5;
+  const dowLabels = weekends ? DOW : DOW.slice(0, 5);
+
+  // Hiding weekends hides any card DUE on one. Say so rather than silently dropping them,
+  // same rule as the no-due-date chip.
+  const weekendHidden = weekends
+    ? 0
+    : grid.filter((_, i) => i % 7 >= 5).reduce((n, c) => n + (byDay[c.iso]?.length || 0), 0);
+
   const step = (delta) => setAnchor(a => (isWeek ? addDays(a, delta * 7) : addMonths(a, delta)));
   const label = isWeek ? weekLabel(weekStart(anchor, 1)) : monthLabel(ay, am - 1);
 
@@ -263,6 +280,25 @@ export default function CalendarView({
             <Chip size="small" variant="outlined" label={`No due date · ${noDate}`} />
           </Tooltip>
         )}
+        {weekendHidden > 0 && (
+          <Tooltip title="Cards due on a Saturday or Sunday, hidden while weekends are off.">
+            <Chip size="small" variant="outlined" label={`Weekend · ${weekendHidden}`} />
+          </Tooltip>
+        )}
+        <FormControl size="small">
+          <Select
+            value={weekends ? 'show' : 'hide'}
+            onChange={e => {
+              const v = e.target.value;
+              setWeekends(v === 'show');
+              try { localStorage.setItem(WEEKENDS_KEY, v); } catch { /* ignore */ }
+            }}
+            sx={{ height: 30, fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0 } }}
+          >
+            <MenuItem value="show">Weekends: On</MenuItem>
+            <MenuItem value="hide">Weekends: Off</MenuItem>
+          </Select>
+        </FormControl>
         <FormControl size="small">
           <Select
             value={mode}
@@ -287,8 +323,8 @@ export default function CalendarView({
       </Box>
 
       {/* Weekday header */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', flexShrink: 0 }}>
-        {DOW.map(d => (
+      <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, flexShrink: 0 }}>
+        {dowLabels.map(d => (
           <Typography key={d} variant="caption" color="text.secondary" fontWeight={600}
             sx={{ px: 1, py: 0.5, textTransform: 'uppercase' }}>
             {d}
@@ -300,7 +336,7 @@ export default function CalendarView({
       <Box
         sx={{
           flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+          display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`,
           // MUST be plain `max-content`. Measured in the browser: `auto` and
           // `minmax(132px, max-content)` both pinned every row to its minimum and let busy
           // days spill into the next week. Growing a track from base to growth-limit
@@ -313,7 +349,7 @@ export default function CalendarView({
           borderTop: 1, borderLeft: 1, borderColor: 'divider',
         }}
       >
-        {grid.map(({ iso, day, outside }) => {
+        {visibleGrid.map(({ iso, day, outside }) => {
           const dayCards = byDay[iso] || [];
           const isToday = iso === today;
           // Weeks has room for everything, so no "N more" there.
