@@ -187,9 +187,10 @@ export default function CalendarView({
   const [colorBy, setColorBy] = useState(() => {
     try { return localStorage.getItem(COLOR_BY_KEY) || 'health'; } catch { return 'health'; }
   });
-  // Most buying work is weekday-only, so hiding Sat/Sun buys ~30% more width per day.
+  // OFF by default: buying work is weekday-shaped, and dropping Sat/Sun buys ~30% more
+  // width per day. Cards genuinely due on a weekend are reported by the "Weekend · N" chip.
   const [weekends, setWeekends] = useState(() => {
-    try { return (localStorage.getItem(WEEKENDS_KEY) || 'show') === 'show'; } catch { return true; }
+    try { return (localStorage.getItem(WEEKENDS_KEY) || 'hide') === 'show'; } catch { return false; }
   });
   const persist = (key, v, set) => {
     set(v);
@@ -405,24 +406,44 @@ export default function CalendarView({
                   grows the whole week ROW rather than scrolling or clipping the cell
                   (gridAutoRows max-content is what lets the row stretch). Rendered on
                   card count, not on `hidden`, so it survives being expanded. */}
-              {!isWeek && dayCards.length > PER_DAY && (
-                <Typography
-                  variant="caption"
-                  onClick={() => setExpanded(p => ({ ...p, [iso]: !p[iso] }))}
-                  sx={{
-                    px: 0.5, py: 0.25, cursor: 'pointer', flexShrink: 0,
-                    color: 'text.secondary',
-                    '&:hover': { color: 'text.primary', textDecoration: 'underline' },
-                  }}
-                >
-                  {expanded[iso] ? 'Show less' : `${hidden} more`}
-                </Typography>
+              {/* One footer row: "N more" and "+ Add task" side by side. They were stacked,
+                  which cost a whole extra line of height in every busy cell. */}
+              {composing !== iso && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                  {!isWeek && dayCards.length > PER_DAY && (
+                    <Typography
+                      variant="caption"
+                      onClick={() => setExpanded(p => ({ ...p, [iso]: !p[iso] }))}
+                      sx={{
+                        px: 0.5, py: 0.25, cursor: 'pointer',
+                        color: 'text.secondary',
+                        '&:hover': { color: 'text.primary', textDecoration: 'underline' },
+                      }}
+                    >
+                      {expanded[iso] ? 'Show less' : `${hidden} more`}
+                    </Typography>
+                  )}
+                  {onAddCard && (
+                    <Typography
+                      className="cal-add"
+                      variant="caption"
+                      onClick={() => { setComposing(iso); setDraft(''); }}
+                      sx={{
+                        px: 0.5, py: 0.25, cursor: 'pointer',
+                        color: 'text.secondary', opacity: 0, transition: 'opacity .12s',
+                        '&:hover': { color: 'text.primary' },
+                      }}
+                    >
+                      + Add task
+                    </Typography>
+                  )}
+                </Box>
               )}
 
               {/* Inline add, revealed on cell hover. Creating from a day cell is the point
                   of a calendar: the due date is implied by where you clicked, so it needs
                   no date picker. Stays open after Enter so a run of cards can be typed. */}
-              {onAddCard && (composing === iso ? (
+              {onAddCard && composing === iso && (
                 <TextField
                   size="small"
                   autoFocus
@@ -437,20 +458,7 @@ export default function CalendarView({
                   onBlur={() => { setComposing(null); setDraft(''); }}
                   sx={{ flexShrink: 0, '& .MuiOutlinedInput-input': { py: 0.5, fontSize: 11.5 } }}
                 />
-              ) : (
-                <Typography
-                  className="cal-add"
-                  variant="caption"
-                  onClick={() => { setComposing(iso); setDraft(''); }}
-                  sx={{
-                    px: 0.5, py: 0.25, cursor: 'pointer', flexShrink: 0,
-                    color: 'text.secondary', opacity: 0, transition: 'opacity .12s',
-                    '&:hover': { color: 'text.primary' },
-                  }}
-                >
-                  + Add task
-                </Typography>
-              ))}
+              )}
             </Box>
           );
         })}

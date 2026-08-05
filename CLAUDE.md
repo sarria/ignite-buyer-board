@@ -341,15 +341,15 @@ lists scroll, never the page (mirrors Asana).
   Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus
   completion separately, since the archive view ignores completion.
 - **CalendarView** — calendar of cards by **due date**, mirroring Asana's. Two modes via
-  a **Weeks / Months** toggle (persisted): Months is the 6x7 grid; **Weeks is one tall row
+  a **Weeks / Months** toggle (persisted, Months by default): Months is the 6x7 grid; **Weeks is one tall row
   where every card shows**, so no "N more" there. Both are driven by a single date anchor,
   and prev/next steps by whichever unit is showing.
-  **Weekends can be toggled off** (persisted), dropping the grid to Mon–Fri — 5 columns
+  **Weekends are OFF by default** and toggleable (persisted), dropping the grid to Mon–Fri — 5 columns
   instead of 7, so each weekday gets ~30% more width, and buying work is weekday-shaped
   anyway. Hiding them hides any card DUE on a weekend, so a **`Weekend · N` chip** reports
   how many are out of sight in the current view — same rule as the no-due-date chip: never
   drop cards silently.
-  **`+ Add task` in each day cell** (revealed on hover) creates a card with that day as its
+  **`+ Add task` sits on the same footer row as `N more`** (revealed on hover) and creates a card with that day as its
   due date — the point of a calendar is that the date is implied by where you clicked.
   New cards land in the FIRST column (the calendar has no column context) and the composer
   stays open after Enter so a run of cards can be typed. It deliberately does NOT open the
