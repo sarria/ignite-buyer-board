@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Tooltip, IconButton, Chip, TextField, CircularProgress,
+  Box, Typography, Tooltip, IconButton, TextField, CircularProgress,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -20,6 +20,7 @@ import SubtaskDialog from '../Card/SubtaskDialog';
 import CompleteToggle from '../common/CompleteToggle';
 import AssigneeControl from '../common/AssigneeControl';
 import DueDatePicker from '../common/DueDatePicker';
+import EnumFieldControl from '../common/EnumFieldControl';
 import { reorderColumns } from '../../api/columns';
 import { tagColor } from '../../utils/tagColor';
 
@@ -30,13 +31,6 @@ import { tagColor } from '../../utils/tagColor';
 // Deliberately a CSS grid rather than <table>: the header, every card row and every
 // subtask row share one `GRID` template, which is what keeps columns aligned across
 // groups without measuring anything.
-
-const HEALTH_COLORS = {
-  'Good': '#4caf50',
-  'Ok': '#ff9800',
-  'Needs Work': '#f44336',
-  'Waiting on DCM': '#2196f3',
-};
 
 function Cell({ children, sx }) {
   return (
@@ -74,21 +68,11 @@ function DueCell({ value, onChange, readOnly }) {
   );
 }
 
-function EnumCell({ field, card }) {
+function EnumCell({ field, card, onChange, readOnly }) {
   const v = card.fieldValues?.find(x => x.fieldId?.toString() === field._id?.toString())?.valueEnum;
-  if (!v) return <Cell />;
-  const color = HEALTH_COLORS[v];
   return (
     <Cell>
-      <Chip
-        size="small"
-        label={v}
-        sx={{
-          height: 20, fontSize: 11, fontWeight: 600,
-          bgcolor: color || 'action.selected',
-          color: color ? '#fff' : 'text.primary',
-        }}
-      />
+      <EnumFieldControl field={field} value={v || ''} readOnly={readOnly} onChange={onChange} />
     </Cell>
   );
 }
@@ -134,7 +118,7 @@ function Group({ col, children, collapsed, onToggle, count }) {
 
 export default function ListView({
   cards, columns = [], fields = [], users = [], selectedCardId,
-  onCardClick, onToggleComplete, onCardPatch, onAddCard, onReorderColumns, boardId, addSignal = 0,
+  onCardClick, onToggleComplete, onCardPatch, onCardFieldChange, onAddCard, onReorderColumns, boardId, addSignal = 0,
 }) {
   const [collapsed, setCollapsed] = useState({});     // columnId -> true
   const [expanded, setExpanded] = useState({});       // cardId -> true
@@ -356,7 +340,15 @@ export default function ListView({
                         readOnly={rowReadOnly}
                         onChange={v => onCardPatch?.(card, { dueDate: v })}
                       />
-                      {enumFields.map(f => <EnumCell key={f._id} field={f} card={card} />)}
+                      {enumFields.map(f => (
+                        <EnumCell
+                          key={f._id}
+                          field={f}
+                          card={card}
+                          readOnly={rowReadOnly}
+                          onChange={v => onCardFieldChange?.(card, f._id, v)}
+                        />
+                      ))}
                     </Box>
 
                     {/* Subtasks, indented under their parent */}

@@ -466,6 +466,12 @@ lists scroll, never the page (mirrors Asana).
   persists the finished `{name,url,isImage}`. It was duplicated, and the subtask copy
   destructured `uploadFile`'s result — which resolves to a URL **string**, not an object —
   so every subtask upload posted `url: undefined`. One component, one upload path.
+- **EnumFieldControl** (`common/`) — enum custom fields (Health above all) set **in place
+  from a List row**: the coloured chip when set, a dashed `Set` pill when not, click for the
+  options. Health is the field buyers change most and it was drawer-only, which made the
+  List view read-only in practice. Writes through `BoardPage.handleCardFieldChange`
+  (optimistic → `PUT /cards/:id/fields`). **Subtask rows leave these cells empty on
+  purpose** — subtasks carry no custom fields at all (0 of 60 sampled in Asana).
 - **AssigneeControl / DueDatePicker `compact`** (`common/`) — **assign and set a due date
   without opening the card**, Asana's affordance: an avatar (or a dashed person ring when
   unassigned) and a dashed calendar ring, both opening the same pickers used in the drawer.

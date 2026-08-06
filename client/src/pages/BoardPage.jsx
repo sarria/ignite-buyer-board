@@ -29,7 +29,7 @@ import BoardFilters from '../components/Board/BoardFilters';
 import { cardMatchesFilters, matchesCompletion, EMPTY_FILTERS } from '../utils/cardFilters';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard, updateBoard } from '../api/boards';
-import { getCards, getCardCounts, createCard, moveCard, reorderCards, updateCard } from '../api/cards';
+import { getCards, getCardCounts, createCard, moveCard, reorderCards, updateCard, setCardFields } from '../api/cards';
 import { reorderColumns } from '../api/columns';
 import { getTemplates, applyTemplate } from '../api/templates';
 import api from '../api/client';
@@ -382,6 +382,23 @@ export default function BoardPage() {
     }
   }, []);
 
+  // Enum custom fields (Health above all) set straight from a list row. Optimistic like
+  // the rest; the server owns the fieldValues array, so its response replaces ours.
+  const handleCardFieldChange = useCallback(async (card, fieldId, value) => {
+    const id = fieldId.toString();
+    const optimistic = [
+      ...(card.fieldValues || []).filter(fv => fv.fieldId?.toString() !== id),
+      ...(value ? [{ fieldId, valueEnum: value }] : []),
+    ];
+    setCards(prev => prev.map(c => (c._id === card._id ? { ...c, fieldValues: optimistic } : c)));
+    try {
+      const updated = await setCardFields(card._id, { [id]: value });
+      setCards(prev => prev.map(c => (c._id === card._id ? { ...c, ...updated } : c)));
+    } catch {
+      setCards(prev => prev.map(c => (c._id === card._id ? { ...c, fieldValues: card.fieldValues } : c)));
+    }
+  }, []);
+
   const handleRenameBoard = useCallback(async (name) => {
     const updated = await updateBoard(id, { name });
     setBoard(prev => (prev ? { ...prev, name: updated.name } : prev));
@@ -605,6 +622,7 @@ export default function BoardPage() {
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
           onCardPatch={handleCardPatch}
+          onCardFieldChange={handleCardFieldChange}
           onAddCard={handleAddCardQuiet}
           onReorderColumns={setColumns}
           boardId={id}
