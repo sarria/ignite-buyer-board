@@ -11,9 +11,14 @@ fix both.
 
 ## The short version
 
+One command per board — migrate → seed → link Lumina:
+
 ```bash
-node migration/import-board.js rachel      # migrate -> seed -> link Lumina, one command
-node migration/import-board.js --all       # every board in boards.config.js
+node migration/import-board.js rachel      # The A Team (Team Rachel)      1156457376337923
+node migration/import-board.js dream       # The Dream Team (Team Conrad)  1205337491932114
+node migration/import-board.js kathy       # Team Kathy                    1208888075650797
+node migration/import-board.js ttots       # Team T Tots (Team Travis)     1205337491932125
+node migration/import-board.js --all       # every board in boards.config.js, in order
 ```
 
 `boards.config.js` holds each board's GID and its archive/skip decisions, so nobody has to

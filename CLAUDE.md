@@ -359,6 +359,10 @@ lists scroll, never the page (mirrors Asana).
   `Add task` also lives in the board's top bar (shared by all three views) because the
   per-group one sits below every row — a 2,000-row scroll on a big column.
   Expanded rows end with **`Add subtask`**, matching the drawer's placement.
+  An expanded subtask row is **fully interactive, not a read-out**: tick to complete, click
+  the title to open the **same `SubtaskDialog`** the drawer uses, delete on hover — a list
+  where you can see a subtask but not act on it is a dead end. Read-only follows the parent
+  card (completed/archived), exactly as in the drawer.
   Groups are **drag-reorderable** by a handle that appears on hover, through the same
   `reorderColumns` call board settings uses, so the two can't disagree about order.
 - **BoardFilters** — the Filter button + popover (filter set listed under *Design*).

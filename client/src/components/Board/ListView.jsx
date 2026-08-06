@@ -9,6 +9,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import LinkIcon from '@mui/icons-material/Link';
+import DeleteOutlineIcon from '@mui/icons-material/Delete';
 import {
   DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -16,7 +17,8 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { getCard } from '../../api/cards';
-import { createSubtask } from '../../api/subtasks';
+import { createSubtask, updateSubtask, deleteSubtask } from '../../api/subtasks';
+import SubtaskDialog from '../Card/SubtaskDialog';
 import { reorderColumns } from '../../api/columns';
 import { formatDueRelative, dueExact, isOverdue, isToday } from '../../utils/dueDate';
 import { userColor } from '../../utils/userColor';
@@ -192,6 +194,24 @@ export default function ListView({
   // opening the card.
   const [addingSubIn, setAddingSubIn] = useState(null);   // cardId
   const [subDraft, setSubDraft] = useState('');
+  // A subtask row behaves like the drawer's: tick to complete, click the title to open the
+  // SAME SubtaskDialog, delete on hover. Anything less makes the list a dead end where you
+  // can see a subtask but not act on it.
+  const [openSub, setOpenSub] = useState(null);           // { cardId, subtaskId }
+
+  const replaceSub = (cardId, updated) => setSubtasks(p => ({
+    ...p,
+    [cardId]: (Array.isArray(p[cardId]) ? p[cardId] : []).map(s => (s._id === updated._id ? updated : s)),
+  }));
+  const patchSub = async (cardId, id, data) => replaceSub(cardId, await updateSubtask(id, data));
+  const removeSub = async (cardId, id) => {
+    await deleteSubtask(id);
+    setSubtasks(p => ({
+      ...p,
+      [cardId]: (Array.isArray(p[cardId]) ? p[cardId] : []).filter(s => s._id !== id),
+    }));
+    setOpenSub(null);
+  };
   const commitSub = async (cardId) => {
     const title = subDraft.trim();
     setSubDraft('');
@@ -216,6 +236,12 @@ export default function ListView({
     try { await reorderColumns(boardId, reordered.map(c => c._id)); }
     catch { onReorderColumns?.(columns); }               // put it back if the save failed
   };
+
+  const openSubCard = openSub ? cards.find(c => c._id === openSub.cardId) : null;
+  const openSubtask = openSub
+    ? (Array.isArray(subtasks[openSub.cardId]) ? subtasks[openSub.cardId] : [])
+        .find(s => s._id === openSub.subtaskId) || null
+    : null;
 
   const commitAdd = async (columnId) => {
     const title = draft.trim();
@@ -266,6 +292,8 @@ export default function ListView({
                 const subCount = card.subtaskCount || 0;
                 const open = !!expanded[card._id];
                 const kids = subtasks[card._id];
+                // Same rule as the drawer: a completed or archived card's subtasks are read-only.
+                const rowReadOnly = done || !!card.isArchived;
                 return (
                   <Box key={card._id}>
                     <Box
@@ -351,13 +379,46 @@ export default function ListView({
                           display: 'grid', gridTemplateColumns: GRID, height: 34, alignItems: 'center',
                           borderBottom: '1px solid', borderColor: 'divider',
                           '&:hover': { bgcolor: 'action.hover' },
+                          '&:hover .sub-del': { opacity: 1 },
                         }}
                       >
                         <Cell sx={{ pl: 6 }}>
-                          <CheckCircleIcon sx={{ fontSize: 15, flexShrink: 0, color: sub.isComplete ? '#4caf50' : 'action.disabled' }} />
-                          <Typography variant="body2" noWrap sx={{ color: sub.isComplete ? 'text.disabled' : 'text.primary' }}>
+                          <Tooltip title={sub.isComplete ? 'Mark incomplete' : 'Mark complete'}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={rowReadOnly}
+                                onClick={() => patchSub(card._id, sub._id, { isComplete: !sub.isComplete })}
+                                sx={{ p: 0, flexShrink: 0, color: sub.isComplete ? '#4caf50' : 'text.disabled', '&:hover': { color: '#4caf50' } }}
+                              >
+                                {sub.isComplete ? <CheckCircleIcon sx={{ fontSize: 15 }} /> : <CheckCircleOutlineIcon sx={{ fontSize: 15 }} />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          {/* Title opens the detail; the tick stays its own hit target, as
+                              in the drawer. */}
+                          <Typography
+                            variant="body2"
+                            noWrap
+                            onClick={() => setOpenSub({ cardId: card._id, subtaskId: sub._id })}
+                            sx={{
+                              flex: 1, minWidth: 0, cursor: 'pointer',
+                              color: sub.isComplete ? 'text.disabled' : 'text.primary',
+                              '&:hover': { textDecoration: 'underline' },
+                            }}
+                          >
                             {sub.title}
                           </Typography>
+                          {!rowReadOnly && (
+                            <IconButton
+                              className="sub-del"
+                              size="small"
+                              onClick={() => removeSub(card._id, sub._id)}
+                              sx={{ p: 0.25, flexShrink: 0, opacity: 0, transition: 'opacity .12s' }}
+                            >
+                              <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                            </IconButton>
+                          )}
                         </Cell>
                         <AssigneeCell user={userById[sub.assigneeId?.toString()]} />
                         <DueCell value={sub.dueDate} />
@@ -367,7 +428,7 @@ export default function ListView({
 
                     {/* Add subtask, at the END of the expanded list — same placement as the
                         card drawer, so the affordance is where you finish reading. */}
-                    {open && Array.isArray(kids) && (
+                    {open && Array.isArray(kids) && !rowReadOnly && (
                       <Box sx={{ display: 'grid', gridTemplateColumns: GRID, height: 34, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
                         <Cell sx={{ pl: 6 }}>
                           {addingSubIn === card._id ? (
@@ -440,6 +501,20 @@ export default function ListView({
         </SortableContext>
         </DndContext>
       </Box>
+
+      {/* One dialog for the whole list — the SAME component the card drawer uses, so a
+          subtask edits identically wherever you found it. */}
+      <SubtaskDialog
+        open={!!openSubtask}
+        subtask={openSubtask}
+        parentTitle={openSubCard?.title}
+        users={users}
+        readOnly={!!(openSubCard?.isCompleted || openSubCard?.isArchived)}
+        onSave={data => patchSub(openSub.cardId, openSub.subtaskId, data)}
+        onReplace={updated => replaceSub(openSub.cardId, updated)}
+        onDelete={() => removeSub(openSub.cardId, openSub.subtaskId)}
+        onClose={() => setOpenSub(null)}
+      />
     </Box>
   );
 }
