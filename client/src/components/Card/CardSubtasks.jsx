@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import {
-  Box, Typography, Checkbox, TextField, IconButton, Tooltip, Avatar,
+  Box, Typography, TextField, IconButton,
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/Delete';
 import { createSubtask, updateSubtask, deleteSubtask } from '../../api/subtasks';
-import { formatDueRelative, dueExact, isOverdue } from '../../utils/dueDate';
-import { userColor } from '../../utils/userColor';
 import SubtaskDialog from './SubtaskDialog';
+import CompleteToggle from '../common/CompleteToggle';
+import AssigneeControl from '../common/AssigneeControl';
+import DueDatePicker from '../common/DueDatePicker';
 
 // Subtask list. A row shows what Asana's does — done state, title, due date, assignee —
 // and clicking the title opens the subtask's own detail (SubtaskDialog), because a
 // subtask carries assignee/dueDate/notes that were previously unreachable.
-
-const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
 
 export default function CardSubtasks({ cardId, subtasks, onChange, users = [], parentTitle, readOnly = false }) {
   const [newTitle, setNewTitle] = useState('');
@@ -49,10 +48,7 @@ export default function CardSubtasks({ cardId, subtasks, onChange, users = [], p
       </Typography>
 
       <Box>
-        {subtasks.map(sub => {
-          const assignee = users.find(u => u._id?.toString() === sub.assigneeId?.toString());
-          const overdue = isOverdue(sub.dueDate);
-          return (
+        {subtasks.map(sub => (
             <Box
               key={sub._id}
               sx={{
@@ -62,12 +58,12 @@ export default function CardSubtasks({ cardId, subtasks, onChange, users = [], p
                 '&:hover .sub-del': { opacity: 1 },
               }}
             >
-              <Checkbox
-                size="small"
-                checked={!!sub.isComplete}
+              <CompleteToggle
+                done={!!sub.isComplete}
                 disabled={readOnly}
-                onChange={() => patch(sub._id, { isComplete: !sub.isComplete })}
-                sx={{ p: 0.5 }}
+                onToggle={() => patch(sub._id, { isComplete: !sub.isComplete })}
+                size={16}
+                sx={{ ml: 0.25 }}
               />
               {/* Title opens the detail. The checkbox stays a separate hit target so
                   ticking something off never opens a dialog you didn't ask for. */}
@@ -84,24 +80,22 @@ export default function CardSubtasks({ cardId, subtasks, onChange, users = [], p
                 {sub.title}
               </Typography>
 
-              {sub.dueDate && (
-                <Tooltip title={dueExact(sub.dueDate)}>
-                  <Typography
-                    variant="caption"
-                    sx={{ flexShrink: 0, color: overdue ? 'error.main' : 'text.secondary', fontWeight: overdue ? 600 : 400 }}
-                  >
-                    {formatDueRelative(sub.dueDate)}
-                  </Typography>
-                </Tooltip>
-              )}
-
-              {assignee && (
-                <Tooltip title={assignee.name}>
-                  <Avatar sx={{ width: 20, height: 20, fontSize: 9, bgcolor: userColor(assignee), flexShrink: 0 }}>
-                    {initials(assignee.name)}
-                  </Avatar>
-                </Tooltip>
-              )}
+              {/* Due date and assignee are set right here, same controls as a card —
+                  opening the subtask dialog just to pick a date is a click too many. */}
+              <DueDatePicker
+                compact
+                size={20}
+                value={sub.dueDate}
+                readOnly={readOnly}
+                onChange={v => patch(sub._id, { dueDate: v })}
+              />
+              <AssigneeControl
+                value={sub.assigneeId}
+                users={users}
+                size={20}
+                readOnly={readOnly}
+                onChange={id => patch(sub._id, { assigneeId: id })}
+              />
 
               {!readOnly && (
                 <IconButton
@@ -114,8 +108,7 @@ export default function CardSubtasks({ cardId, subtasks, onChange, users = [], p
                 </IconButton>
               )}
             </Box>
-          );
-        })}
+        ))}
       </Box>
 
       {/* Persistent "Add subtask" at the END of the list (Asana's placement) rather than a

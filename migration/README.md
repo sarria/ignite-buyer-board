@@ -235,6 +235,11 @@ working in the app, see *Once the boards are in real use* below.
    export: it pulls whatever changed in Asana since.
 4. **Verify** — step 5.
 
+> **Boards imported before 2026-08-06 have flat-text subtask descriptions** — the export
+> never asked Asana for subtask `html_notes`, so all the bold/underlined KPI headings were
+> lost, along with subtask comment HTML and any inline images in either. A re-seed cannot
+> fix it (the data isn't in the export); those boards need a full re-migrate.
+>
 > **Boards imported before 2026-08-05 are missing subtask comments, attachments and
 > assignees.** Assignees can be backfilled from an existing export (they were captured,
 > just dropped by the seeder), but comments and attachments were **never exported** —

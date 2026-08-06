@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Avatar, Tooltip, IconButton, Chip, TextField, CircularProgress,
+  Box, Typography, Tooltip, IconButton, Chip, TextField, CircularProgress,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import LinkIcon from '@mui/icons-material/Link';
@@ -19,9 +17,10 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { getCard } from '../../api/cards';
 import { createSubtask, updateSubtask, deleteSubtask } from '../../api/subtasks';
 import SubtaskDialog from '../Card/SubtaskDialog';
+import CompleteToggle from '../common/CompleteToggle';
+import AssigneeControl from '../common/AssigneeControl';
+import DueDatePicker from '../common/DueDatePicker';
 import { reorderColumns } from '../../api/columns';
-import { formatDueRelative, dueExact, isOverdue, isToday } from '../../utils/dueDate';
-import { userColor } from '../../utils/userColor';
 import { tagColor } from '../../utils/tagColor';
 
 // Asana's List view: one flat table grouped by column (Asana's "sections"), collapsible,
@@ -39,8 +38,6 @@ const HEALTH_COLORS = {
   'Waiting on DCM': '#2196f3',
 };
 
-const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-
 function Cell({ children, sx }) {
   return (
     <Box sx={{
@@ -52,32 +49,27 @@ function Cell({ children, sx }) {
   );
 }
 
-function AssigneeCell({ user }) {
-  if (!user) return <Cell><Typography variant="caption" color="text.disabled">—</Typography></Cell>;
+// Both cells are editable in place — assigning and dating is most of what a list view is
+// for, and bouncing to the drawer for it defeats the point of the row.
+function AssigneeCell({ user, users, onChange, readOnly }) {
   return (
     <Cell>
-      <Avatar sx={{ width: 22, height: 22, fontSize: 10, bgcolor: userColor(user), flexShrink: 0 }}>
-        {initials(user.name)}
-      </Avatar>
-      <Typography variant="body2" noWrap>{user.name}</Typography>
+      <AssigneeControl
+        value={user?._id}
+        users={users}
+        readOnly={readOnly}
+        onChange={onChange}
+        size={22}
+      />
+      {user && <Typography variant="body2" noWrap>{user.name}</Typography>}
     </Cell>
   );
 }
 
-function DueCell({ value }) {
-  if (!value) return <Cell><Typography variant="caption" color="text.disabled">—</Typography></Cell>;
-  const overdue = isOverdue(value);
+function DueCell({ value, onChange, readOnly }) {
   return (
     <Cell>
-      <Tooltip title={dueExact(value)}>
-        <Typography
-          variant="body2"
-          noWrap
-          sx={{ color: overdue ? 'error.main' : 'text.primary', fontWeight: overdue || isToday(value) ? 600 : 400 }}
-        >
-          {formatDueRelative(value)}
-        </Typography>
-      </Tooltip>
+      <DueDatePicker compact size={22} value={value} readOnly={readOnly} onChange={onChange} />
     </Cell>
   );
 }
@@ -142,7 +134,7 @@ function Group({ col, children, collapsed, onToggle, count }) {
 
 export default function ListView({
   cards, columns = [], fields = [], users = [], selectedCardId,
-  onCardClick, onToggleComplete, onAddCard, onReorderColumns, boardId, addSignal = 0,
+  onCardClick, onToggleComplete, onCardPatch, onAddCard, onReorderColumns, boardId, addSignal = 0,
 }) {
   const [collapsed, setCollapsed] = useState({});     // columnId -> true
   const [expanded, setExpanded] = useState({});       // cardId -> true
@@ -315,15 +307,7 @@ export default function ListView({
                             </IconButton>
                           )}
                         </Box>
-                        <Tooltip title={done ? 'Mark incomplete' : 'Mark complete'}>
-                          <IconButton
-                            size="small"
-                            sx={{ p: 0, flexShrink: 0, color: done ? '#4caf50' : 'text.disabled', '&:hover': { color: '#4caf50' } }}
-                            onClick={() => onToggleComplete?.(card)}
-                          >
-                            {done ? <CheckCircleIcon sx={{ fontSize: 17 }} /> : <CheckCircleOutlineIcon sx={{ fontSize: 17 }} />}
-                          </IconButton>
-                        </Tooltip>
+                        <CompleteToggle done={done} onToggle={() => onToggleComplete?.(card)} />
                         <Typography
                           variant="body2"
                           noWrap
@@ -361,8 +345,17 @@ export default function ListView({
                           </Tooltip>
                         ))}
                       </Cell>
-                      <AssigneeCell user={userById[card.assigneeId?.toString()]} />
-                      <DueCell value={card.dueDate} />
+                      <AssigneeCell
+                        user={userById[card.assigneeId?.toString()]}
+                        users={users}
+                        readOnly={rowReadOnly}
+                        onChange={id => onCardPatch?.(card, { assigneeId: id })}
+                      />
+                      <DueCell
+                        value={card.dueDate}
+                        readOnly={rowReadOnly}
+                        onChange={v => onCardPatch?.(card, { dueDate: v })}
+                      />
                       {enumFields.map(f => <EnumCell key={f._id} field={f} card={card} />)}
                     </Box>
 
@@ -383,18 +376,12 @@ export default function ListView({
                         }}
                       >
                         <Cell sx={{ pl: 6 }}>
-                          <Tooltip title={sub.isComplete ? 'Mark incomplete' : 'Mark complete'}>
-                            <span>
-                              <IconButton
-                                size="small"
-                                disabled={rowReadOnly}
-                                onClick={() => patchSub(card._id, sub._id, { isComplete: !sub.isComplete })}
-                                sx={{ p: 0, flexShrink: 0, color: sub.isComplete ? '#4caf50' : 'text.disabled', '&:hover': { color: '#4caf50' } }}
-                              >
-                                {sub.isComplete ? <CheckCircleIcon sx={{ fontSize: 15 }} /> : <CheckCircleOutlineIcon sx={{ fontSize: 15 }} />}
-                              </IconButton>
-                            </span>
-                          </Tooltip>
+                          <CompleteToggle
+                            done={!!sub.isComplete}
+                            disabled={rowReadOnly}
+                            onToggle={() => patchSub(card._id, sub._id, { isComplete: !sub.isComplete })}
+                            size={16}
+                          />
                           {/* Title opens the detail; the tick stays its own hit target, as
                               in the drawer. */}
                           <Typography
@@ -420,8 +407,17 @@ export default function ListView({
                             </IconButton>
                           )}
                         </Cell>
-                        <AssigneeCell user={userById[sub.assigneeId?.toString()]} />
-                        <DueCell value={sub.dueDate} />
+                        <AssigneeCell
+                          user={userById[sub.assigneeId?.toString()]}
+                          users={users}
+                          readOnly={rowReadOnly}
+                          onChange={id => patchSub(card._id, sub._id, { assigneeId: id })}
+                        />
+                        <DueCell
+                          value={sub.dueDate}
+                          readOnly={rowReadOnly}
+                          onChange={v => patchSub(card._id, sub._id, { dueDate: v })}
+                        />
                         {enumFields.map(f => <Cell key={f._id} />)}
                       </Box>
                     ))}

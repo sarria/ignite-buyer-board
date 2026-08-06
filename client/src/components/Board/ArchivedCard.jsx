@@ -36,7 +36,7 @@ export default function ArchivedCard({ card, fields = [], users = [], onClick, s
           {columnName}
         </Typography>
       )}
-      <CardFace card={card} fields={fields} users={users} />
+      <CardFace card={card} fields={fields} users={users} readOnly />
     </Box>
   );
 }

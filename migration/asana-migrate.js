@@ -346,13 +346,19 @@ async function main() {
       try {
         const subtasks = await getAll(
           `/tasks/${task.gid}/subtasks`,
-          '&opt_fields=gid,name,assignee.gid,assignee.name,assignee.email,due_on,completed,notes,created_at'
+          '&opt_fields=gid,name,assignee.gid,assignee.name,assignee.email,due_on,completed,notes,html_notes,created_at'
         );
         card.subtasks = subtasks.map(s => ({
           asana_gid: s.gid,
           title: s.name,
           is_complete: s.completed || false,
           notes: s.notes || null,
+          // Subtask descriptions are formatted the same way card descriptions are —
+          // bold KPI headings, bullet lists — and only `notes` was exported, so every
+          // one imported as flat text. Same html_notes/description_html pairing the card
+          // path already had. Rewritten to S3 below, since a subtask's own attachments
+          // can be referenced inline.
+          notes_html_raw: s.html_notes || null,
           due_date: s.due_on || null,
           created_at: s.created_at,
           assignee: s.assignee ? {
@@ -373,9 +379,8 @@ async function main() {
         // filter on: ~7.7k extra calls for Rachel's board, roughly 20 minutes at the
         // configured rate limit. That's the price of not losing the data.
         //
-        // No inline-image handling here on purpose: 0 of 60 sampled subtask comments
-        // contained an <img>, so subtask attachments aren't fetched and there is nothing
-        // to rewrite. If that ever changes, images would break — see the card path.
+        // Inline images ARE rewritten (below, per subtask) now that subtask attachments
+        // are fetched — a subtask's <img> points at its own attachment, not the card's.
         for (const sub of card.subtasks) {
           try {
             const subStories = await getAll(
@@ -436,6 +441,19 @@ async function main() {
               report.errors.push({ type: 'subtask-attachments', subtask_gid: sub.asana_gid, error: e.message });
             }
           }
+
+          // Rewrite the subtask's own inline images to S3, exactly as the card path does.
+          // Its attachments are its own (fetched just above), so it needs its own map —
+          // a subtask's <img> is never in the parent card's attachment list.
+          const subGidToUrl = Object.fromEntries((sub.attachments || []).map(a => [a.asana_gid, a.url]));
+          const subReferenced = new Set();
+          sub.notes_html = rewriteHtmlImages(sub.notes_html_raw, subGidToUrl, subReferenced);
+          delete sub.notes_html_raw;
+          for (const c of sub.comments) {
+            c.body_html = rewriteHtmlImages(c.body_html_raw, subGidToUrl, subReferenced);
+            delete c.body_html_raw;
+          }
+          for (const a of sub.attachments || []) a.inline = subReferenced.has(a.asana_gid);
         }
 
         if (subtasks.length > 0) {

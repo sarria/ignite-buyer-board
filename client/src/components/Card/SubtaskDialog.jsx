@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog, DialogContent, Box, Typography, TextField, Select, MenuItem,
-  FormControl, IconButton, Button, Tooltip, Divider, Avatar, CircularProgress,
+  FormControl, IconButton, Button, Tooltip, Divider, Avatar,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -11,10 +11,8 @@ import DueDatePicker from '../common/DueDatePicker';
 import RichTextField from '../common/RichTextField';
 import RichContent from '../common/RichContent';
 import Linkify from '../../utils/linkify';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
-import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import Attachments from '../common/Attachments';
 import CardComments from './CardComments';
-import { uploadFile } from '../../api/uploads';
 import { addSubtaskAttachment, removeSubtaskAttachment } from '../../api/subtasks';
 import { getSubtaskComments, createSubtaskComment } from '../../api/comments';
 import { userColor } from '../../utils/userColor';
@@ -49,8 +47,6 @@ export default function SubtaskDialog({
   const [title, setTitle] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [comments, setComments] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef(null);
 
   // Fetched when the dialog opens rather than shipped with the card: a card can carry
   // 28 subtasks, and pre-loading every thread would bloat the card payload for threads
@@ -73,7 +69,6 @@ export default function SubtaskDialog({
 
   if (!subtask) return null;
   const done = !!subtask.isComplete;
-  const files = (subtask.attachments || []).filter(a => !a.inline);
 
   // Text fields commit on blur rather than per keystroke — one request per edit, not one
   // per character, and it keeps the parent list from re-rendering as you type.
@@ -201,86 +196,13 @@ export default function SubtaskDialog({
         <Divider sx={{ my: 1.5 }} />
 
         {/* Attachments — ~8% of imported subtasks carry one, almost always a pasted
-            performance screenshot. Images preview; anything else is a file tile. */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <Typography variant="subtitle2" fontWeight={700}>
-            Attachments {files.length > 0 && `(${files.length})`}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
-          {!readOnly && (
-            <Button
-              size="small"
-              startIcon={uploading ? <CircularProgress size={12} /> : <AttachFileIcon sx={{ fontSize: 15 }} />}
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-              sx={{ textTransform: 'none' }}
-            >
-              Add file
-            </Button>
-          )}
-          <input
-            ref={fileRef}
-            type="file"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (!file) return;
-              setUploading(true);
-              try {
-                const { publicUrl } = await uploadFile(file);
-                const updated = await addSubtaskAttachment(subtask._id, {
-                  name: file.name, url: publicUrl, isImage: /^image\//.test(file.type),
-                });
-                onReplace?.(updated);
-              } finally { setUploading(false); }
-            }}
-          />
-        </Box>
-
-        {files.length > 0 && (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
-            {files.map(f => (
-              <Box key={f.url} sx={{ position: 'relative', '&:hover .att-del': { opacity: 1 } }}>
-                <Box
-                  component="a"
-                  href={f.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  sx={{
-                    display: 'flex', alignItems: 'center', gap: 0.75, textDecoration: 'none',
-                    border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden',
-                    width: f.isImage ? 120 : 'auto', p: f.isImage ? 0 : 1,
-                    color: 'text.primary',
-                  }}
-                >
-                  {f.isImage
-                    ? <Box component="img" src={f.url} alt={f.name} sx={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
-                    : (<>
-                        <InsertDriveFileOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                        <Typography variant="caption" noWrap sx={{ maxWidth: 160 }}>{f.name}</Typography>
-                      </>)}
-                </Box>
-                {!readOnly && (
-                  <IconButton
-                    className="att-del"
-                    size="small"
-                    onClick={async () => {
-                      const updated = await removeSubtaskAttachment(subtask._id, f.url);
-                      onReplace?.(updated);
-                    }}
-                    sx={{
-                      position: 'absolute', top: 2, right: 2, opacity: 0, transition: 'opacity .12s',
-                      bgcolor: 'background.paper', '&:hover': { bgcolor: 'background.paper' },
-                    }}
-                  >
-                    <CloseIcon sx={{ fontSize: 13 }} />
-                  </IconButton>
-                )}
-              </Box>
-            ))}
-          </Box>
-        )}
+            performance screenshot. Same component as the card drawer. */}
+        <Attachments
+          attachments={subtask.attachments}
+          readOnly={readOnly}
+          onAdd={async (att) => onReplace?.(await addSubtaskAttachment(subtask._id, att))}
+          onRemove={async (url) => onReplace?.(await removeSubtaskAttachment(subtask._id, url))}
+        />
 
         <Divider sx={{ my: 1.5 }} />
 

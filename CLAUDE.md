@@ -423,6 +423,9 @@ lists scroll, never the page (mirrors Asana).
   `'YYYY-MM-DD'` or `null`, the shape the API already took.
 - **CardDrawer** — right drawer. Mark complete toggle, Status/Assignee/Due, Tags
   (combobox), custom fields (only those with a value, "+ Add field" to reveal more).
+  Only fields with a value show, **except Health, which always shows** — it's the field
+  buyers set most, and hiding it until it already has a value left no way to set it (it is
+  correspondingly dropped from the "+ Add field" menu).
   Field inputs are **borderless until hover** (border on hover, blue on focus — Asana).
   Description (rich HTML render; click-to-edit when no inline images), Attachments
   (non-inline files: image thumbnails + file tiles), Subtasks, Comments. Move-to-
@@ -458,6 +461,25 @@ lists scroll, never the page (mirrors Asana).
   subtask deletes its comments and their inline S3 images.
   Threads load when the dialog opens, not with the card: a card can carry 28 subtasks and
   pre-loading every thread would bloat the payload for threads nobody opens.
+- **Attachments** (`common/`) — the Attachments section (96px tiles + dashed add tile),
+  shared by CardDrawer and SubtaskDialog. It owns the upload; the caller's `onAdd` only
+  persists the finished `{name,url,isImage}`. It was duplicated, and the subtask copy
+  destructured `uploadFile`'s result — which resolves to a URL **string**, not an object —
+  so every subtask upload posted `url: undefined`. One component, one upload path.
+- **AssigneeControl / DueDatePicker `compact`** (`common/`) — **assign and set a due date
+  without opening the card**, Asana's affordance: an avatar (or a dashed person ring when
+  unassigned) and a dashed calendar ring, both opening the same pickers used in the drawer.
+  Live on the **board card, list rows, calendar cards and subtasks** — one control, learned
+  once. Card edits go through **`BoardPage.handleCardPatch`** (optimistic, rolls back on
+  failure, shared by all three views); subtask edits go straight through `updateSubtask`.
+  Read-only on completed/archived, where the dashed placeholder is hidden rather than shown
+  dead. On the **calendar the placeholder only appears on hover** — hundreds of cards each
+  wearing an empty ring is noise, and the calendar is for scanning dates.
+- **CompleteToggle** (`common/`) — the one complete/incomplete control: Asana's grey ring
+  that fills green when done, never a square MUI checkbox. The drawer's subtask list used a
+  `Checkbox` and was the odd surface out; List view and the drawer now share this so they
+  can't drift. (Square `Checkbox` stays where it means multi-select — filters, the Lumina
+  field picker.)
 - **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
   inside Collapsible "See more"). Migrated comments show "Imported from Asana".
 - **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
@@ -660,7 +682,10 @@ real campaigns with it.
   AND existing/imported cards - deliberately not in the column's one-line create
   composer). Attached -> a **collapsible box** headed `Lumina - <campaign>` with a live
   status line ("Fetching from Lumina..." -> "Updated 2:14:03 PM . Spark . Live .
-  Casper"), an **Open in Lumina** button, refresh + detach. The fetch is **never awaited
+  Casper"), an **Open in Lumina** button, refresh + detach. The body is **open by default
+  but clamped** in a `Collapsible` (220px, "See more") — the full order form is ~75 fields
+  and pushed the description and comments off screen. Two controls on purpose: the header
+  chevron puts the panel away entirely, See more keeps it in view at a readable height. The fetch is **never awaited
   by the drawer** - the rest of the card is on screen immediately. Read-only on
   archived/completed cards.
 - **Sections mirror Lumina's own line-item page** (Product, Campaign, Ignite Team,
@@ -775,6 +800,16 @@ troubleshooting. This section covers what the scripts *are*; the runbook covers 
   url vs text inferred from values).
 - `--auto` skips prompts: archive columns matching `cancelled`/`completed campaign`,
   skip `duplicate`. **Archived = archive-named column only** (NOT completion).
+- **Subtask descriptions were imported as flat text** until 2026-08-06: the subtask export
+  asked Asana for `notes` but never `html_notes`, so `notesHtml` was always null and every
+  bold/underlined KPI heading arrived as plain text (**40 of 40 sampled subtasks with notes
+  are formatted**; 7,804 subtasks carry notes). Now exported and seeded like a card's
+  `description`/`descriptionHtml`. Their **inline images are rewritten to S3 too**, from
+  the subtask's OWN attachment map — a subtask `<img>` never appears in the parent card's
+  attachments — and the same rewrite now runs on **subtask comment HTML**, which was
+  likewise being dropped (`body_html_raw` was never converted, so `bodyHtml` seeded null).
+  **Needs a re-migrate to fix already-imported boards** — a re-seed can't add data the
+  export never captured.
 - **Subtask assignees**: `assigneeId` was hardcoded `null`, dropping every one (707 of Team
   Kathy's 1,464 exported subtasks had one). Now mapped, and the user upsert is built from
   card **and subtask** assignees — 5 of Kathy's 10 subtask assignees never assign a card,
@@ -951,7 +986,23 @@ All route handlers try/catch → central error middleware; error shape
   record is null, so the screenshot was most likely stale.
 - **NOT worth building on subtasks** (measured 2026-08-04, 75 sampled across two boards):
   **dependencies — 0**, **nested sub-subtasks — 0**. Asana offers both; nobody here uses
-  either.
+  either. Add **custom fields (incl. Health) — 0** (measured 2026-08-06: 60 subtasks
+  sampled live from Asana, not one carries any custom-field value). So Health stays a
+  card-level field; the seeder deliberately doesn't export subtask custom fields.
+- **Activity feed ("Comments / All activity" tabs, deferred 2026-08-06).** Asana shows
+  system events on a task — "X created this task · Jun 1", "X completed this task" — and
+  buyers want that on cards AND subtasks. Deferred until **MSAL SSO**, because with the
+  auth stub every actor would print as the shared dev user.
+  **Know the cost of waiting: we log nothing.** Asana can render that feed because it
+  recorded events as they happened; we store no history at all, so every status change,
+  reassignment, due-date move and health flip made between now and SSO is simply gone —
+  waiting doesn't defer the work, it discards the data. The only events recoverable after
+  the fact are `createdAt` and `completedAt`, which we do store.
+  Judged acceptable **for now** because the boards are still test imports and can be
+  re-imported from Asana. **Revisit the moment a team starts working for real** — from
+  that day, unlogged history is permanently lost. The cheap middle option, if that comes
+  before SSO: start writing an `activity` collection server-side (one write per mutating
+  controller, no UI), and build the tabs later on real history.
 - **Import Asana task templates** (templates are not exported/seeded yet).
 - **Private S3 bucket** via presigned/CloudFront (currently public).
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during

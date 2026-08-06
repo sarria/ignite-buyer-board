@@ -432,13 +432,16 @@ async function main() {
             title: sub.title,
             isComplete: sub.is_complete,
             notes: sub.notes || '',
+            // Rich description, mirroring a card's description/descriptionHtml. Exports
+            // made before 2026-08-06 have no notes_html, so those seed as plain text.
+            notesHtml: sub.notes_html || null,
             dueDate: sub.due_date ? new Date(sub.due_date) : null,
             // Merge like cards do: keep files a user uploaded here (under
             // buyer-board/uploads/) and replace only the Asana-migrated ones, so a
             // re-seed doesn't wipe work done in the app.
             attachments: [
               ...(sub.attachments || []).map(a => ({
-                name: a.name, url: a.url, isImage: !!a.is_image, inline: false,
+                name: a.name, url: a.url, isImage: !!a.is_image, inline: !!a.inline,
                 createdAt: a.created_at ? new Date(a.created_at) : new Date(),
               })),
               ...((await db.collection('subtasks').findOne(

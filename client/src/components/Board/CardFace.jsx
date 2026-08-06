@@ -1,12 +1,12 @@
-import { Box, Typography, Chip, Avatar, Tooltip } from '@mui/material';
+import { Box, Typography, Chip, Tooltip } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SellIcon from '@mui/icons-material/Sell';
 import LinkIcon from '@mui/icons-material/Link';
 import { tagColor } from '../../utils/tagColor';
-import { userColor } from '../../utils/userColor';
-import { formatDueRelative, dueExact, isOverdue, isToday } from '../../utils/dueDate';
+import AssigneeControl from '../common/AssigneeControl';
+import DueDatePicker from '../common/DueDatePicker';
 
 const HEALTH_COLORS = {
   'Good': '#4caf50',
@@ -22,21 +22,13 @@ function getHealth(card, fields) {
   return fv?.valueEnum || null;
 }
 
-function getInitials(name = '') {
-  return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-}
-
-
 // Presentational card contents shared by BoardCard (draggable) and ArchivedCard.
-export default function CardFace({ card, fields = [], users = [] }) {
+export default function CardFace({ card, fields = [], users = [], onPatch, readOnly = false }) {
   const health = getHealth(card, fields);
   const healthColor = health ? HEALTH_COLORS[health] : null;
-  const assignee = users.find(u => u._id?.toString() === card.assigneeId?.toString());
   const subtaskCount = card.subtaskCount || 0;
   const subtaskDone = card.subtaskDone || 0;
   const commentCount = card.commentCount || 0;
-  const overdue = isOverdue(card.dueDate);
-  const dueToday = isToday(card.dueDate);
   // Legacy cards hold only an advertiserId — they're still linked, so count both
   // (same test LuminaPanel uses). `name` is the display copy stored on the link, so
   // the tooltip can name the campaign without a Lumina round-trip per card.
@@ -85,27 +77,21 @@ export default function CardFace({ card, fields = [], users = [] }) {
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+        {/* Assign and set a due date without opening the card — the two edits buyers
+            make while scanning a column. Dashed placeholders when unset (Asana). */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          {assignee && (
-            <Tooltip title={assignee.name}>
-              <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: userColor(assignee) }}>
-                {getInitials(assignee.name)}
-              </Avatar>
-            </Tooltip>
-          )}
-          {card.dueDate && (
-            /* Relative label ("Today", "in 3 days") for scanning; the exact date on
-               hover, since a relative label alone drops information. */
-            <Tooltip title={dueExact(card.dueDate)}>
-              <Typography
-                variant="caption"
-                color={overdue ? 'error' : 'text.secondary'}
-                fontWeight={overdue || dueToday ? 700 : 400}
-              >
-                {formatDueRelative(card.dueDate)}
-              </Typography>
-            </Tooltip>
-          )}
+          <AssigneeControl
+            value={card.assigneeId}
+            users={users}
+            readOnly={readOnly}
+            onChange={id => onPatch?.({ assigneeId: id })}
+          />
+          <DueDatePicker
+            compact
+            value={card.dueDate}
+            readOnly={readOnly}
+            onChange={v => onPatch?.({ dueDate: v })}
+          />
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

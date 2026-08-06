@@ -12,7 +12,7 @@ import BoardCard from './BoardCard';
 
 export default function BoardColumn({
   column, cards = [], fields = [], users = [], templates = [],
-  onCardClick, onAddCard, onApplyTemplate, showArchived = false, isDragOverlay = false, addSignal = 0,
+  onCardClick, onCardPatch, onAddCard, onApplyTemplate, showArchived = false, isDragOverlay = false, addSignal = 0,
   selectedCardId = null, loadingCards = false,
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -148,6 +148,7 @@ export default function BoardColumn({
                 fields={fields}
                 users={users}
                 onClick={() => onCardClick(card)}
+                onPatch={patch => onCardPatch?.(card, patch)}
                 dimmed={card.isArchived}
                 selected={selectedCardId?.toString() === card._id?.toString()}
               />

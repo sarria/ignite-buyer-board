@@ -82,7 +82,12 @@ function Calendar({ selected, onPick }) {
   );
 }
 
-export default function DueDatePicker({ value, onChange, readOnly = false }) {
+// `compact` is the same control shrunk to a card/row affordance: a dashed calendar ring
+// when there's no date (Asana's "Add due date"), the relative label alone once there is.
+// Same popover, so a date is set the same way wherever you are.
+export default function DueDatePicker({
+  value, onChange, readOnly = false, compact = false, size = 24,
+}) {
   const [anchor, setAnchor] = useState(null);
   const selected = toInput(value);
   const [typed, setTyped] = useState(selected);
@@ -102,6 +107,90 @@ export default function DueDatePicker({ value, onChange, readOnly = false }) {
   };
 
   const overdue = isOverdue(value);
+
+  const openPopover = (e) => {
+    if (readOnly) return;
+    e.stopPropagation();      // never bubble into "open the card"
+    e.preventDefault();
+    setAnchor(e.currentTarget);
+  };
+
+  const popover = (
+    <Popover
+      open={!!anchor}
+      anchorEl={anchor}
+      onClose={() => setAnchor(null)}
+      onClick={e => e.stopPropagation()}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      slotProps={{ paper: { sx: { mt: 0.5, borderRadius: 2 } } }}
+    >
+      <Box sx={{ p: 1.5, pb: 1 }}>
+        <TextField
+          size="small"
+          autoFocus
+          fullWidth
+          value={typed}
+          error={invalid}
+          helperText={invalid ? 'Try 6/4/26 or 2026-06-04' : ' '}
+          placeholder="MM/DD/YY"
+          onChange={e => { setTyped(e.target.value); setInvalid(false); }}
+          onKeyDown={e => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); commitTyped(); }
+            if (e.key === 'Escape') setAnchor(null);
+          }}
+          onBlur={() => { if (typed !== selected) commitTyped(); }}
+        />
+      </Box>
+
+      <Calendar selected={selected} onPick={commit} />
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 1.5, pb: 1.5, pt: 0.5 }}>
+        <Button size="small" onClick={() => commit(null)} disabled={!value}>Clear</Button>
+      </Box>
+    </Popover>
+  );
+
+  if (compact) {
+    // No date and read-only → nothing to show; an empty ring would offer a control that
+    // does nothing on a completed/archived card.
+    if (!value && readOnly) return null;
+    return (
+      <>
+        <Tooltip title={value ? dueExact(value) : 'Add due date'}>
+          <Box
+            onClick={openPopover}
+            onMouseDown={e => e.stopPropagation()}     // don't start a dnd-kit drag
+            sx={{
+              display: 'inline-flex', alignItems: 'center', gap: 0.5, flexShrink: 0,
+              cursor: readOnly ? 'default' : 'pointer',
+              color: overdue ? 'error.main' : 'text.secondary',
+              ...(value ? {
+                px: 0.5, borderRadius: 1,
+                '&:hover': { bgcolor: readOnly ? 'transparent' : 'action.hover' },
+              } : {
+                width: size, height: size, borderRadius: '50%', justifyContent: 'center',
+                border: '1px dashed', borderColor: 'text.disabled', color: 'text.disabled',
+                '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
+              }),
+            }}
+          >
+            <CalendarTodayOutlinedIcon sx={{ fontSize: value ? 14 : size * 0.55 }} />
+            {value && (
+              <Typography
+                variant="caption"
+                color={overdue ? 'error' : 'text.secondary'}
+                fontWeight={overdue || isToday(value) ? 700 : 400}
+              >
+                {formatDueRelative(value)}
+              </Typography>
+            )}
+          </Box>
+        </Tooltip>
+        {popover}
+      </>
+    );
+  }
 
   return (
     <>
@@ -147,37 +236,7 @@ export default function DueDatePicker({ value, onChange, readOnly = false }) {
         )}
       </Box>
 
-      <Popover
-        open={!!anchor}
-        anchorEl={anchor}
-        onClose={() => setAnchor(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { mt: 0.5, borderRadius: 2 } } }}
-      >
-        <Box sx={{ p: 1.5, pb: 1 }}>
-          <TextField
-            size="small"
-            autoFocus
-            fullWidth
-            value={typed}
-            error={invalid}
-            helperText={invalid ? 'Try 6/4/26 or 2026-06-04' : ' '}
-            placeholder="MM/DD/YY"
-            onChange={e => { setTyped(e.target.value); setInvalid(false); }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); commitTyped(); }
-              if (e.key === 'Escape') setAnchor(null);
-            }}
-            onBlur={() => { if (typed !== selected) commitTyped(); }}
-          />
-        </Box>
-
-        <Calendar selected={selected} onPick={commit} />
-
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 1.5, pb: 1.5, pt: 0.5 }}>
-          <Button size="small" onClick={() => commit(null)} disabled={!value}>Clear</Button>
-        </Box>
-      </Popover>
+      {popover}
     </>
   );
 }

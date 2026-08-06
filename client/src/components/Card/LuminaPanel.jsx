@@ -13,6 +13,7 @@ import {
 import { getLuminaFieldSettings, getBoardLuminaFieldSettings } from '../../api/settings';
 
 import LuminaSnapshot from './LuminaSnapshot';
+import Collapsible from '../common/Collapsible';
 
 // A card links to a Lumina LINE ITEM — that's the unit buyers work on and what
 // Lumina deep-links to. We store only its id and re-pull the full order-form
@@ -226,12 +227,18 @@ export default function LuminaPanel({ lumina, readOnly, onChange, boardId }) {
           {!error && !snap && loading && (
             <Typography variant="body2" color="text.secondary">Fetching line-item data…</Typography>
           )}
+          {/* Open by default, but clamped: the full order form is ~75 fields and pushed
+              the description and comments off the screen. Two controls on purpose — the
+              header chevron puts the whole panel away, "See more" keeps it in view at a
+              readable height. Same Collapsible as long comments. */}
           {!error && snap && (
-            <LuminaSnapshot
-              snap={snap}
-              advertiserHide={new Set(fieldSettings?.hiddenAdvertiserFields || [])}
-              lineItemHide={new Set(fieldSettings?.hiddenLineItemFields || [])}
-            />
+            <Collapsible collapsedHeight={220}>
+              <LuminaSnapshot
+                snap={snap}
+                advertiserHide={new Set(fieldSettings?.hiddenAdvertiserFields || [])}
+                lineItemHide={new Set(fieldSettings?.hiddenLineItemFields || [])}
+              />
+            </Collapsible>
           )}
         </Box>
       </Collapse>

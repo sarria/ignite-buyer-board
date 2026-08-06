@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, IconButton, Button, Tooltip, Avatar, Chip,
+  Box, Typography, IconButton, Button, Tooltip, Chip,
   Select, MenuItem, FormControl, TextField,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -16,7 +16,7 @@ import {
   toInput, todayInput, monthGrid, monthLabel, addDays, addMonths, weekStart, weekLabel,
 } from '../../utils/dueDate';
 import { tagColor } from '../../utils/tagColor';
-import { userColor } from '../../utils/userColor';
+import AssigneeControl from '../common/AssigneeControl';
 
 // Month calendar of cards by DUE DATE, mirroring Asana's Calendar view. Cards without a
 // due date can't be placed, so they're surfaced as a count rather than silently dropped
@@ -39,10 +39,7 @@ const COLOR_BY_KEY = 'calendar.colorBy';
 const MODE_KEY = 'calendar.mode';        // 'month' | 'week'
 const WEEKENDS_KEY = 'calendar.weekends';
 
-const initials = (name = '') => name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-
-function CalendarCard({ card, health, tint, users, selected, onClick, onToggleComplete }) {
-  const assignee = users.find(u => u._id?.toString() === card.assigneeId?.toString());
+function CalendarCard({ card, health, tint, users, selected, onClick, onToggleComplete, onPatch }) {
   const done = !!card.isCompleted;
   const linked = !!(card.lumina?.lineitemId || card.lumina?.advertiserId);
   const subtaskCount = card.subtaskCount || 0;
@@ -78,6 +75,10 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
         // the content over, and slides back out. Width (not just opacity) is what makes
         // it push rather than overlap.
         '&:hover .cal-complete': { width: 18, opacity: 1, mr: 0.25 },
+        // An unassigned card's dashed ring only appears on hover: on a month grid of
+        // hundreds of cards a permanent placeholder on every one is noise, and the
+        // calendar's job is scanning dates, not spotting gaps in ownership.
+        '&:hover .cal-assign': { opacity: 1 },
       }}
     >
       <Box
@@ -103,13 +104,22 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
         </Tooltip>
       </Box>
 
-      {assignee && (
-        <Tooltip title={assignee.name}>
-          <Avatar sx={{ width: 18, height: 18, fontSize: 9, bgcolor: userColor(assignee), flexShrink: 0, mt: '1px', opacity: done ? 0.6 : 1 }}>
-            {initials(assignee.name)}
-          </Avatar>
-        </Tooltip>
-      )}
+      <Box
+        className="cal-assign"
+        sx={{
+          display: 'flex', flexShrink: 0, mt: '1px',
+          opacity: card.assigneeId ? (done ? 0.6 : 1) : 0,
+          transition: 'opacity .15s',
+        }}
+      >
+        <AssigneeControl
+          value={card.assigneeId}
+          users={users}
+          size={18}
+          readOnly={done}
+          onChange={id => onPatch?.(card, { assigneeId: id })}
+        />
+      </Box>
 
       {/* Done state at rest: a quiet grey tick before the title (Asana's signal), which
           stays visible while the green toggle slides in on hover. */}
@@ -170,7 +180,7 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
 }
 
 export default function CalendarView({
-  cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete, onAddCard,
+  cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete, onCardPatch, onAddCard,
   addSignal = 0,
 }) {
   const today = todayInput();
@@ -409,6 +419,7 @@ export default function CalendarView({
                   selected={selectedCardId === card._id}
                   onClick={onCardClick}
                   onToggleComplete={onToggleComplete}
+                  onPatch={onCardPatch}
                 />
               ))}
 

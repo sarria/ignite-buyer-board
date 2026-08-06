@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Drawer, Box, Typography, TextField, Select, MenuItem,
-  FormControl, InputLabel, CircularProgress, Divider, IconButton,
+  FormControl, InputLabel, Divider, IconButton,
   Chip, Tooltip, Button, Menu, Autocomplete, Skeleton,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
@@ -14,12 +14,11 @@ import DriveFileMoveOutlinedIcon from '@mui/icons-material/DriveFileMoveOutlined
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
-import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import LinkIcon from '@mui/icons-material/Link';
 import { getCard, updateCard, setCardFields, deleteCard, moveCardBoard, addCardAttachment, removeCardAttachment } from '../../api/cards';
-import { uploadFile } from '../../api/uploads';
+import Attachments from '../common/Attachments';
 import { getBoards, getBoard } from '../../api/boards';
 import CardSubtasks from './CardSubtasks';
 import LuminaPanel from './LuminaPanel';
@@ -252,23 +251,12 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
     onClose();
   };
 
-  // Attachments (standalone files, any type)
-  const attachInputRef = useRef(null);
-  const [uploadingAttachment, setUploadingAttachment] = useState(false);
-
-  const handleAddAttachment = async (file) => {
-    if (!file) return;
-    setUploadingAttachment(true);
-    try {
-      const url = await uploadFile(file);
-      const updated = await addCardAttachment(card._id, { name: file.name, url, isImage: file.type?.startsWith('image/') });
-      setCard(prev => ({ ...prev, attachments: updated.attachments }));
-      onCardUpdate?.(updated);
-    } catch {
-      window.alert('Upload failed.');
-    } finally {
-      setUploadingAttachment(false);
-    }
+  // Attachments (standalone files, any type). The upload itself lives in <Attachments>;
+  // this only persists the finished descriptor.
+  const handleAddAttachment = async (att) => {
+    const updated = await addCardAttachment(card._id, att);
+    setCard(prev => ({ ...prev, attachments: updated.attachments }));
+    onCardUpdate?.(updated);
   };
 
   const handleRemoveAttachment = async (url) => {
@@ -658,9 +646,14 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
               )}
             </FieldRow>
 
-            {/* Custom fields — show only those with a value (or ones the user added) */}
+            {/* Custom fields — show only those with a value (or ones the user added).
+                EXCEPT Health: it is the field buyers set most, and hiding it until it
+                already has a value means there is no way to set it in the first place
+                without hunting through "+ Add field". It always shows. */}
             {fields
-              .filter(field => hasFieldValue(field._id) || extraFieldIds.includes(field._id.toString()))
+              .filter(field => field.name === 'Health'
+                || hasFieldValue(field._id)
+                || extraFieldIds.includes(field._id.toString()))
               .map(field => (
               <FieldRow key={field._id} label={field.name}>
                 {field.type === 'enum' ? (
@@ -710,7 +703,9 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
 
             {/* Add field — reveal a board field that has no value on this card yet */}
             {(() => {
-              const addable = fields.filter(f => !hasFieldValue(f._id) && !extraFieldIds.includes(f._id.toString()));
+              // Health is always on screen, so it must not also be offered here.
+              const addable = fields.filter(f => f.name !== 'Health'
+                && !hasFieldValue(f._id) && !extraFieldIds.includes(f._id.toString()));
               if (!addable.length) return null;
               return (
                 <Box sx={{ pt: 0.5 }}>
@@ -795,80 +790,13 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             <Divider sx={{ my: 2 }} />
 
             {/* Attachments — standalone files (not the inline images in text). */}
-            {(() => {
-              const files = (card.attachments || []).filter(a => !a.inline);
-              if (!files.length && readOnly) return null;
-              return (
-              <>
-                <Typography variant="subtitle2" fontWeight={700} mb={1}>
-                  Attachments{files.length ? ` (${files.length})` : ''}
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                  {files.map((att, i) => (
-                    <Box key={att.url || i} sx={{ position: 'relative', width: 96, height: 96 }}>
-                      <Tooltip title={att.name || 'attachment'}>
-                        <Box
-                          component="a"
-                          href={att.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          sx={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            width: '100%', height: '100%', borderRadius: 1,
-                            border: '1px solid', borderColor: 'divider', overflow: 'hidden',
-                            textDecoration: 'none', color: 'text.secondary',
-                            p: att.isImage ? 0 : 1,
-                            '&:hover': { borderColor: 'primary.main' },
-                          }}
-                        >
-                          {att.isImage ? (
-                            <Box component="img" src={att.url} alt={att.name || ''} loading="lazy"
-                              sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                          ) : (
-                            <Box sx={{ textAlign: 'center', overflow: 'hidden', width: '100%' }}>
-                              <InsertDriveFileOutlinedIcon sx={{ fontSize: 30 }} />
-                              <Typography sx={{ fontSize: 9, lineHeight: 1.2, mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {att.name}
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                      </Tooltip>
-                      {!readOnly && (
-                        <Tooltip title="Remove">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleRemoveAttachment(att.url)}
-                            sx={{ position: 'absolute', top: 2, right: 2, p: 0.25, bgcolor: 'rgba(0,0,0,0.6)', color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' } }}
-                          >
-                            <CloseIcon sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  ))}
-                  {!readOnly && (
-                    <Tooltip title="Add file">
-                      <Box
-                        onClick={() => attachInputRef.current?.click()}
-                        sx={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: 96, height: 96, borderRadius: 1, cursor: 'pointer',
-                          border: '1px dashed', borderColor: 'divider', color: 'text.secondary',
-                          '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
-                        }}
-                      >
-                        {uploadingAttachment ? <CircularProgress size={22} /> : <AddIcon />}
-                      </Box>
-                    </Tooltip>
-                  )}
-                  <input ref={attachInputRef} type="file" hidden
-                    onChange={e => { handleAddAttachment(e.target.files?.[0]); e.target.value = ''; }} />
-                </Box>
-                <Divider sx={{ my: 2 }} />
-              </>
-              );
-            })()}
+            <Attachments
+              attachments={card.attachments}
+              readOnly={readOnly}
+              onAdd={handleAddAttachment}
+              onRemove={handleRemoveAttachment}
+            />
+            {((card.attachments || []).some(a => !a.inline) || !readOnly) && <Divider sx={{ my: 2 }} />}
 
             {/* Subtasks */}
             <CardSubtasks

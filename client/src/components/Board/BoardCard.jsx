@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import CardFace from './CardFace';
 
-export default function BoardCard({ card, fields = [], users = [], onClick, dimmed = false, selected = false }) {
+export default function BoardCard({ card, fields = [], users = [], onClick, onPatch, dimmed = false, selected = false }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card._id,
     data: { type: 'card', card },
@@ -38,7 +38,8 @@ export default function BoardCard({ card, fields = [], users = [], onClick, dimm
         userSelect: 'none',
       }}
     >
-      <CardFace card={card} fields={fields} users={users} />
+      <CardFace card={card} fields={fields} users={users} onPatch={onPatch}
+        readOnly={!!card.isCompleted || !!card.isArchived} />
     </Box>
   );
 }

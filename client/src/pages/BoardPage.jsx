@@ -368,6 +368,20 @@ export default function BoardPage() {
     }
   }, []);
 
+  // Assignee / due-date edits made straight from a card face, list row or calendar cell.
+  // Optimistic like the completion toggle, and rolled back the same way. One handler for
+  // every view so an inline edit behaves identically wherever it's made.
+  const handleCardPatch = useCallback(async (card, patch) => {
+    setCards(prev => prev.map(c => (c._id === card._id ? { ...c, ...patch } : c)));
+    try {
+      const updated = await updateCard(card._id, patch);
+      setCards(prev => prev.map(c => (c._id === card._id ? { ...c, ...updated } : c)));
+    } catch {
+      const revert = Object.fromEntries(Object.keys(patch).map(k => [k, card[k] ?? null]));
+      setCards(prev => prev.map(c => (c._id === card._id ? { ...c, ...revert } : c)));
+    }
+  }, []);
+
   const handleRenameBoard = useCallback(async (name) => {
     const updated = await updateBoard(id, { name });
     setBoard(prev => (prev ? { ...prev, name: updated.name } : prev));
@@ -590,6 +604,7 @@ export default function BoardPage() {
           selectedCardId={drawerCardId}
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
+          onCardPatch={handleCardPatch}
           onAddCard={handleAddCardQuiet}
           onReorderColumns={setColumns}
           boardId={id}
@@ -604,6 +619,7 @@ export default function BoardPage() {
           selectedCardId={drawerCardId}
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
+          onCardPatch={handleCardPatch}
           onAddCard={handleAddCardOnDate}
           addSignal={addSignal}
         />
@@ -637,6 +653,7 @@ export default function BoardPage() {
                     users={users}
                     selectedCardId={drawerCardId}
                     onCardClick={card => { if (!didDrag) openCard(card._id); }}
+                    onCardPatch={handleCardPatch}
                     onAddCard={handleAddCard}
                     onApplyTemplate={handleApplyTemplate}
                     templates={templates}
