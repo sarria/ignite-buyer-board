@@ -26,7 +26,9 @@ import ArchivedGrid from '../components/Board/ArchivedGrid';
 import CalendarView from '../components/Board/CalendarView';
 import ListView from '../components/Board/ListView';
 import BoardFilters from '../components/Board/BoardFilters';
+import SortMenu from '../components/Board/SortMenu';
 import { cardMatchesFilters, matchesCompletion, EMPTY_FILTERS } from '../utils/cardFilters';
+import { SORT_NONE, sortCards } from '../utils/cardSort';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard, updateBoard } from '../api/boards';
 import { getCards, getCardCounts, createCard, moveCard, reorderCards, updateCard, setCardFields } from '../api/cards';
@@ -131,6 +133,23 @@ export default function BoardPage() {
     if (['list', 'board', 'calendar'].includes(fromUrl)) return fromUrl;
     try { return localStorage.getItem(`board.view.${id}`) || 'board'; } catch { return 'board'; }
   });
+  // Sort: one active field + direction, remembered per board (Asana's "Sort" menu).
+  // 'manual' (drag order) is the default and the only mode where drag reordering works.
+  const [sortBy, setSortBy] = useState(() => {
+    try { return localStorage.getItem(`board.sortBy.${id}`) || SORT_NONE; } catch { return SORT_NONE; }
+  });
+  const [sortDir, setSortDir] = useState(() => {
+    try { return localStorage.getItem(`board.sortDir.${id}`) || 'asc'; } catch { return 'asc'; }
+  });
+  const handleSortChange = (by, dir) => {
+    setSortBy(by);
+    setSortDir(dir);
+    try {
+      localStorage.setItem(`board.sortBy.${id}`, by);
+      localStorage.setItem(`board.sortDir.${id}`, dir);
+    } catch { /* ignore */ }
+  };
+
   // Bumped by the top-bar "Add task". Each view watches it and opens ITS OWN inline
   // composer — first group in List, first column on the Board, today's cell in Calendar —
   // rather than popping a modal, so creating a card looks the same however you start it.
@@ -450,8 +469,13 @@ export default function BoardPage() {
       const key = card.columnId?.toString();
       if (map[key]) map[key].push(card);
     });
+    if (sortBy !== SORT_NONE) {
+      for (const key of Object.keys(map)) {
+        map[key] = sortCards(map[key], sortBy, sortDir, { users, enumFields });
+      }
+    }
     return map;
-  }, [visibleCards, columns, showArchived]);
+  }, [visibleCards, columns, showArchived, sortBy, sortDir, users, enumFields]);
 
   // Archive view is a flat grid (not grouped by column). Same filters as the board
   // minus the completion filter — the archive shows complete + incomplete together.
@@ -527,6 +551,9 @@ export default function BoardPage() {
           enumFields={enumFields}
           allTags={allTags}
         />
+        {!showArchived && (
+          <SortMenu sortBy={sortBy} direction={sortDir} onChange={handleSortChange} enumFields={enumFields} />
+        )}
         <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {/* View switcher. Hidden in the archive view, which is its own flat grid and
               has no calendar equivalent. List is next. */}
@@ -627,6 +654,9 @@ export default function BoardPage() {
           onReorderColumns={setColumns}
           boardId={id}
           addSignal={addSignal}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={handleSortChange}
         />
       ) : !showArchived && view === 'calendar' ? (
         <CalendarView

@@ -365,6 +365,27 @@ lists scroll, never the page (mirrors Asana).
   card (completed/archived), exactly as in the drawer.
   Groups are **drag-reorderable** by a handle that appears on hover, through the same
   `reorderColumns` call board settings uses, so the two can't disagree about order.
+- **Sort** — two ways into the same state (`utils/cardSort.js`): the top-bar **Sort**
+  button (`SortMenu`, next to Filter — pick a field: Task name, Assignee, Due date, or
+  any enum field incl. Health, + an ascending/descending toggle), and, in the List view
+  only, a **hover-revealed sort glyph on the Assignee/Due date/enum column headers**
+  themselves (`SortableHeaderCell` — click for Sort ascending/descending; the active
+  header turns blue with a direction arrow so it's visible without opening anything).
+  Both write the same `sortBy`/`sortDir`, so a header click and the toolbar button can't
+  disagree. **`Manual` (drag order / `position`) is the default**, and the only mode
+  where drag-and-drop reordering still makes sense; picking a real field is a per-board
+  choice remembered in localStorage (`board.sortBy.<id>` / `board.sortDir.<id>`), same
+  pattern as the view toggle. Once a sort is active, the top-bar menu leads with an
+  explicit **"Clear sort"** (separated by a divider from the field list) rather than
+  making you notice "Manual" already does that — the header menus offer the same as a
+  third item. Sorting is **within each group/column, never across them** — grouping
+  still means something once sorted. Applies identically to the Board view's columns and
+  the List view's groups (one predicate, `sortCards()`, used by both) — the Calendar is
+  unaffected since it's already grouped by due date.
+  **Not built: adding/removing custom field columns from the List view itself** — tried
+  and pulled back (2026-08-12) because it's ambiguous whether "+" should create a brand
+  new field or attach an existing one; Board settings → Fields remains the only place to
+  manage fields until that's decided.
 - **BoardFilters** — the Filter button + popover (filter set listed under *Design*).
   Rows are add/remove: a filter row shows because it has a value or because you added it.
   Owns no state — `BoardPage` holds one `filters` object (`EMPTY_FILTERS` shape) plus

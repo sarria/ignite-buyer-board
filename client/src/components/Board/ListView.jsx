@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Tooltip, IconButton, TextField, CircularProgress,
+  Menu, MenuItem, ListItemIcon, ListItemText,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -8,6 +9,9 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
 import LinkIcon from '@mui/icons-material/Link';
 import DeleteOutlineIcon from '@mui/icons-material/Delete';
+import ImportExportIcon from '@mui/icons-material/ImportExport';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import {
   DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -23,6 +27,7 @@ import DueDatePicker from '../common/DueDatePicker';
 import EnumFieldControl from '../common/EnumFieldControl';
 import { reorderColumns } from '../../api/columns';
 import { tagColor } from '../../utils/tagColor';
+import { sortCards, SORT_NONE } from '../../utils/cardSort';
 
 // Asana's List view: one flat table grouped by column (Asana's "sections"), collapsible,
 // with the board's enum custom fields as extra columns. A row expands to show its
@@ -77,6 +82,62 @@ function EnumCell({ field, card, onChange, readOnly }) {
   );
 }
 
+// A header cell that can drive the shared sort state — a hover-revealed sort glyph next
+// to the label (there was previously no hint at all that a header was clickable), opening
+// a tiny menu of Ascending / Descending. Mirrors the top-bar Sort button's fields so the
+// two can't disagree; clicking a header is just a shortcut into the same state.
+function SortableHeaderCell({ label, sortKey, sortBy, sortDir, onSortChange, sx }) {
+  const [anchor, setAnchor] = useState(null);
+  const active = sortBy === sortKey;
+  const pick = (dir) => { onSortChange?.(sortKey, dir); setAnchor(null); };
+  return (
+    <Cell sx={{ '&:hover .sort-hdr-btn': { opacity: 1 }, ...sx }}>
+      <Typography
+        variant="caption" fontWeight={700}
+        color={active ? 'primary.main' : 'text.secondary'}
+        noWrap sx={{ flex: 1, minWidth: 0 }}
+      >
+        {label}
+      </Typography>
+      {onSortChange && (
+        <IconButton
+          className="sort-hdr-btn"
+          size="small"
+          onClick={e => setAnchor(e.currentTarget)}
+          sx={{ p: 0.25, opacity: active ? 1 : 0, transition: 'opacity .12s', flexShrink: 0, color: active ? 'primary.main' : 'text.secondary' }}
+        >
+          {active
+            ? (sortDir === 'desc' ? <ArrowDownwardIcon sx={{ fontSize: 14 }} /> : <ArrowUpwardIcon sx={{ fontSize: 14 }} />)
+            : <ImportExportIcon sx={{ fontSize: 14 }} />}
+        </IconButton>
+      )}
+      <Menu
+        open={!!anchor}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        transitionDuration={0}
+      >
+        <MenuItem dense selected={active && sortDir === 'asc'} onClick={() => pick('asc')}>
+          <ListItemIcon sx={{ minWidth: 28 }}><ArrowUpwardIcon sx={{ fontSize: 15 }} /></ListItemIcon>
+          <ListItemText>Sort ascending</ListItemText>
+        </MenuItem>
+        <MenuItem dense selected={active && sortDir === 'desc'} onClick={() => pick('desc')}>
+          <ListItemIcon sx={{ minWidth: 28 }}><ArrowDownwardIcon sx={{ fontSize: 15 }} /></ListItemIcon>
+          <ListItemText>Sort descending</ListItemText>
+        </MenuItem>
+        {active && (
+          <MenuItem dense onClick={() => pick(SORT_NONE)}>
+            <ListItemIcon sx={{ minWidth: 28 }} />
+            <ListItemText>Clear sort</ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
+    </Cell>
+  );
+}
+
 // A group (board column) — draggable by the handle that appears on hover, so the list can
 // be reordered the same way the board's columns can. Same dnd-kit + reorderColumns path as
 // board settings, so the three surfaces can't disagree about order.
@@ -119,6 +180,7 @@ function Group({ col, children, collapsed, onToggle, count }) {
 export default function ListView({
   cards, columns = [], fields = [], users = [], selectedCardId,
   onCardClick, onToggleComplete, onCardPatch, onCardFieldChange, onAddCard, onReorderColumns, boardId, addSignal = 0,
+  sortBy = SORT_NONE, sortDir = 'asc', onSortChange,
 }) {
   const [collapsed, setCollapsed] = useState({});     // columnId -> true
   const [expanded, setExpanded] = useState({});       // cardId -> true
@@ -148,8 +210,13 @@ export default function ListView({
       const key = card.columnId?.toString();
       if (map[key]) map[key].push(card);
     }
+    if (sortBy !== SORT_NONE) {
+      for (const key of Object.keys(map)) {
+        map[key] = sortCards(map[key], sortBy, sortDir, { users, enumFields });
+      }
+    }
     return map;
-  }, [cards, columns]);
+  }, [cards, columns, sortBy, sortDir, users, enumFields]);
 
   // Subtasks aren't in the card list payload, so fetch on first expand. getCard returns
   // them alongside comments — one request per row you actually open.
@@ -230,7 +297,10 @@ export default function ListView({
   return (
     <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <Box sx={{ minWidth: 760 }}>
-        {/* Header — sticky so the columns stay labelled while you scroll a long board */}
+        {/* Header — sticky so the columns stay labelled while you scroll a long board.
+            Assignee / Due date / enum fields double as sort shortcuts into the same
+            state the top-bar Sort button drives — a hover-revealed glyph is the only
+            hint, same discoverability trade-off Asana makes. */}
         <Box sx={{
           display: 'grid', gridTemplateColumns: GRID,
           position: 'sticky', top: 0, zIndex: 2,
@@ -239,12 +309,17 @@ export default function ListView({
           height: 38, alignItems: 'center',
         }}>
           <Cell><Typography variant="caption" fontWeight={700} color="text.secondary">Name</Typography></Cell>
-          <Cell><Typography variant="caption" fontWeight={700} color="text.secondary">Assignee</Typography></Cell>
-          <Cell><Typography variant="caption" fontWeight={700} color="text.secondary">Due date</Typography></Cell>
+          <SortableHeaderCell label="Assignee" sortKey="assignee" sortBy={sortBy} sortDir={sortDir} onSortChange={onSortChange} />
+          <SortableHeaderCell label="Due date" sortKey="dueDate" sortBy={sortBy} sortDir={sortDir} onSortChange={onSortChange} />
           {enumFields.map(f => (
-            <Cell key={f._id}>
-              <Typography variant="caption" fontWeight={700} color="text.secondary" noWrap>{f.name}</Typography>
-            </Cell>
+            <SortableHeaderCell
+              key={f._id}
+              label={f.name}
+              sortKey={`enum:${f._id}`}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSortChange={onSortChange}
+            />
           ))}
         </Box>
 
