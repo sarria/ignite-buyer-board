@@ -40,7 +40,7 @@ In `.env` (see `.env.example`):
 | `ASANA_PAT` | reading Asana (`asana-migrate.js`) |
 | `MONGODB_URI` | writing the DB (`asana-seed.js`) |
 | `AWS_*`, `S3_BUCKET`, `S3_PREFIX` | attachment uploads. Needs `s3:PutObject` **and** `s3:DeleteObject` |
-| `LUMINA_API_TOKEN` | `lumina-match.js` (unset → it exits) |
+| `LUMINA_API_ENV` + `LUMINA_API_TOKEN_REL11`/`_PROD` | `lumina-match.js` (unconfigured → it exits) |
 | `DNS_SERVERS` | only if `querySrv ECONNREFUSED` locally (hotspot/VPN). Blank in prod |
 
 Run every command from the repo root.
@@ -276,7 +276,7 @@ Attachments already do the right thing: a re-seed keeps user-uploaded files (nat
 |---|---|
 | `querySrv ECONNREFUSED` | Flaky local DNS. Set `DNS_SERVERS=1.1.1.1,8.8.8.8`. Never in prod. |
 | `Lumina 429` / `lookup-failed` | Throttling. Re-run with `--pace=400`. |
-| Lots of `url-unresolved`, all recent campaigns | Check `LUMINA_API_BASE` is **production** (`townsquarelumina.com`), not `release11` — release's data was frozen ~2026-05-22, so anything newer returns `{found:false}`. Not a data problem. Note prod needs its own token; changing the base alone 401s everything. |
+| Lots of `url-unresolved`, all recent campaigns | Check `LUMINA_API_ENV` — if it's `rel11` and the campaigns are real/recent, they may only exist in **production** (`townsquarelumina.com`). Rel11's data was also frozen ~2026-05-22 in the past, so anything newer than that could return `{found:false}` there. Not a data problem — switch `LUMINA_API_ENV=production` (needs `LUMINA_API_TOKEN_PROD` set) to check against live data. |
 | Broken images after a re-import | Re-seeded from a stale export after the S3 files were deleted. Re-run `asana-migrate.js`. |
 | `Archive the board before deleting it` (409) | Working as designed (rule 7). Archive first. |
 | `Export file not found` | Path is resolved relative to `migration/`. Pass just the filename. |

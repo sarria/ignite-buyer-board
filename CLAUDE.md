@@ -148,6 +148,10 @@ app_settings`
   body,                   // plain text
   bodyHtml,               // rich HTML w/ inline images (null if plain)
   isMigrated, migratedAuthorName, migratedAuthorEmail,
+  pushedToLumina, luminaPushError, luminaPushErrorCode, luminaCommentId,  // set only when
+                          // the composer's "push to Lumina" checkbox was used — see
+                          // Lumina > Comments push. luminaCommentId is Lumina's own id for
+                          // the note, kept so a later edit can PATCH the same note there.
   asanaGid, createdAt /*preserve original Asana timestamp on migration*/ }
 
 // app_settings  — app-wide config as single named docs (string _id). NOT per-board,
@@ -198,7 +202,7 @@ Cards      GET /boards/:id/cards?assignee&column&archived&search · POST /boards
 Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · DELETE /subtasks/:id
            PUT /subtasks/:id {title,assigneeId,dueDate,isComplete,notes,notesHtml}
            POST /subtasks/:id/attachments {name,url,isImage} · DELETE (also deletes from S3)
-Comments   GET/POST /cards/:id/comments {body, bodyHtml} · PUT /comments/:id · DELETE(admin) /comments/:id
+Comments   GET/POST /cards/:id/comments {body, bodyHtml, pushToLumina?} · PUT /comments/:id · DELETE(admin) /comments/:id
            GET/POST /subtasks/:id/comments — the subtask thread
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
 Settings   GET /settings/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
@@ -261,18 +265,27 @@ S3_PREFIX=buyer-board/
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 # Lumina SEM API (read-only). TOKEN IS SERVER-ONLY — never expose to the browser.
-LUMINA_API_BASE=https://townsquarelumina.com/lumina/orders/api/ignite/ext
-                           # PRODUCTION (switched 2026-08-03). It used to point at
-                           #   release11, whose data was frozen ~2026-05-22: every
-                           #   pasted line-item id created on/before that date resolved
-                           #   and every one after returned {found:false} — a clean date
-                           #   split, zero overlap. New campaigns therefore couldn't be
-                           #   viewed OR attached, which is exactly what buyers work on.
-                           #   Release and production need DIFFERENT tokens: pointing the
-                           #   base at prod with a release token 401s everything. If you
-                           #   ever switch back, change BOTH.
-LUMINA_API_TOKEN=          # unset → /lumina/* returns 503, panel shows nothing
-LUMINA_WEB_BASE=https://townsquarelumina.com   # host prepended to Lumina's deepLinkPath
+LUMINA_API_ENV=rel11       # 'rel11' | 'production' — picks BOTH base host + token
+                           #   together, so they can't drift apart (mismatched pair
+                           #   401s everything). Defaults to rel11 (2026-08-13): boards
+                           #   are still being imported/tested, so reads/attach stay off
+                           #   production until we deliberately flip this to go live.
+                           #   (Earlier, before this switch existed, the single base var
+                           #   defaulted to production because rel11's data was frozen
+                           #   ~2026-05-22 and a stale default silently hid new
+                           #   campaigns — that risk doesn't apply now since going live
+                           #   is a deliberate env flip, not an accidental unset var.)
+LUMINA_API_TOKEN_REL11=
+LUMINA_API_TOKEN_PROD=    # unset (either) → /lumina/* returns 503, panel shows nothing
+LUMINA_WEB_BASE=          # optional override for the deep-link web host; normally
+                           #   follows LUMINA_API_ENV
+# Lumina Comments API ("push to Lumina" on a card comment) - separate token/scopes from
+# the SEM API above. See Lumina > Comments push.
+LUMINA_COMMENTS_ENV=rel11 # 'rel11' | 'production' - defaults to rel11, same reason
+EXT_SEMTEAM_TOKEN_REL11=
+EXT_SEMTEAM_TOKEN_PROD=
+LUMINA_COMMENTS_USER=      # Lumina username every pushed comment is attributed to
+                          #   (X-On-Behalf-Of-User) until per-buyer identity exists via SSO
 # Asana (migration only)
 ASANA_PAT=
 ASANA_WORKSPACE_GID=461175262246056
@@ -507,8 +520,11 @@ lists scroll, never the page (mirrors Asana).
   `Checkbox` and was the odd surface out; List view and the drawer now share this so they
   can't drift. (Square `Checkbox` stays where it means multi-select — filters, the Lumina
   field picker.)
-- **CardComments** — rich editor composer (RichEditor) + comment list (RichContent,
-  inside Collapsible "See more"). Migrated comments show "Imported from Asana".
+- **CardComments** — comment list (oldest → newest, RichContent inside Collapsible
+  "See more"), THEN the composer at the bottom — chat-style, so a newly added comment
+  lands right above where you were just typing instead of appearing back at the top of
+  a long thread you'd have to scroll up to find. Migrated comments show "Imported from
+  Asana".
 - **RichEditor** (TipTap) — bold/italic/lists/link/image; image paste/drag/pick →
   presigned S3 upload → inline. Outputs HTML.
 - **RichContent** — sanitized (DOMPurify) render of migrated/edited HTML with inline
@@ -677,7 +693,8 @@ Cohort is `product` in {SEM, SEM/Spark, Spark} minus known in-home (~8k line ite
 real campaigns with it.
 
 - **Server** `server/lib/lumina.js` - read-only client. Token is **server-side only**
-  (`LUMINA_API_TOKEN`); the browser only ever calls our `/api/lumina/*`. Paging is
+  (`LUMINA_API_TOKEN_REL11` / `LUMINA_API_TOKEN_PROD`, selected together with the base
+  host by `LUMINA_API_ENV`); the browser only ever calls our `/api/lumina/*`. Paging is
   `limit=100` **sequentially** (Lumina asked for ~100 at a time to go easy on their
   Mongo - never burst in parallel); only the legacy advertiser path pages at all.
   `searchLineItems` runs **several upstream filters in parallel and merges** them, so one
@@ -786,6 +803,69 @@ real campaigns with it.
 **Why a setting instead of a curated list:** rather than guessing which of Lumina's
 fields buyers need, they pick - and can change it any time without a deploy. Default
 stays "show everything" until someone narrows it.
+
+### Comments push ("push comment to Lumina")
+
+A card comment's composer shows a **"Push to Lumina" checkbox**, inline with the Save
+button (checkbox first) — only when the card is linked to a line item
+(`card.lumina.lineitemId`) — that also posts the comment into that line item's own
+buyer-notes thread via Lumina's Comments API (`ext-comments-api-guide-luminotes.md`,
+LM-4131). **On by default** (a linked card's comments are usually meant for Lumina too;
+the buyer opts OUT per-comment rather than remembering to opt in), and resets back to
+checked after each save. `RichTextField` takes a generic `leadingControl` node rendered
+before its Save button for this — kept generic rather than Lumina-specific since the
+component is shared by descriptions/subtask notes too.
+`server/lib/luminaComments.js` is a separate client from `lumina.js` (different
+token/scopes: `data:read:comments`/`data:write:comments`).
+
+- **Attribution is a single shared account, not per-buyer, until MSAL SSO exists**
+  (auth is a stub - everyone is `DEV_USER`). Every pushed comment shows
+  `LUMINA_COMMENTS_USER` as its author in Lumina, not the buyer who wrote it. Revisit
+  once SSO gives each buyer a real Lumina username to send as `X-On-Behalf-Of-User`.
+- **Best-effort, like S3 cleanup:** a failed push never blocks or fails the local
+  comment save. `createComment` sets `pushedToLumina: true/false` +
+  `luminaPushError`/`luminaPushErrorCode` on the comment doc.
+- **Two distinct failure treatments in `CardComments`, not one generic "failed" chip** —
+  a push failing because Lumina doesn't recognize the line item
+  (`luminaPushErrorCode === 'LUMINA_COMMENTS_NOT_FOUND'`) is shown as a quiet, neutral
+  "Not synced to Lumina" chip (tooltip explains it's a Lumina-side gap, not a bug here);
+  any OTHER failure (network, auth, misconfiguration) shows the red "Lumina push failed"
+  chip. Conflating the two would make a known, expected Lumina limitation look like our
+  feature is broken.
+- **Rel11 vs production is an explicit switch, not inferred from `NODE_ENV`:**
+  `LUMINA_COMMENTS_ENV=rel11|production` picks both the base host and the token
+  (`EXT_SEMTEAM_TOKEN_REL11` / `EXT_SEMTEAM_TOKEN_PROD`) together, defaulting to
+  **rel11** so an unset/misconfigured env can never post to production by accident.
+  Flip to `production` deliberately when going live (mirrors the two-key split already
+  used for data import vs the live SEM API).
+  **RESOLVED (2026-08-14) — was never a Lumina-side or scope problem.** Every comments
+  call (GET/POST comments, even `/user/mentions/autocomplete`, which takes no line-item
+  id at all) returned an identical `200 {"found":false}` on both rel11 and production for
+  2026-08-13, which briefly looked like a broken/undeployed scope grant. The actual cause:
+  **`LUMINA_COMMENTS_USER` was not a real Lumina username** — per
+  `luminotes-app-dev-guide.md` §3, an unrecognized `X-On-Behalf-Of-User` answers
+  `200 {found:false}` on every call needing it, which is indistinguishable from "nothing
+  works" unless you know that rule. Confirmed by testing known-real usernames pulled
+  straight from live line-item data (`aeUsername` etc.) — some resolved, some didn't
+  (`kali.johnson@...` → `403`, others → real data) — and by testing Juan's own account
+  variants until `juan.sarria@townsquaremedia.com` matched. **Lesson: an unresolvable
+  on-behalf user can masquerade as "the whole API is down."** Always sanity-check
+  `LUMINA_COMMENTS_USER` against `/user/mentions/autocomplete` (guide §3) BEFORE
+  suspecting cohort exclusion, scopes, or environment mismatch.
+- Content sent to Lumina is **plain text** (`comment.body`, HTML-stripped) — the
+  Comments API takes a `content` string, not HTML.
+- **Editing a comment that was successfully pushed also PATCHes the same note in Lumina**
+  (`server/lib/luminaComments.js:patchComment`, keyed on the `luminaCommentId` returned by
+  the original push). Editing a comment that was never pushed, or that failed to push,
+  does NOT retroactively push it — that decision still belongs to the composer's
+  checkbox, not to the edit action. Same best-effort contract: a failed PATCH updates
+  `pushedToLumina`/`luminaPushError(Code)` on the comment but never blocks the local edit.
+- **Same SEM-cohort gate as the read API, when it IS working, and it fails silently.**
+  A line item outside `{SEM, SEM/Spark, Spark}` (e.g. in-home/Home Services) answers
+  `200 {found:false}` on the comments POST too — not an error status — so `postComment`
+  must check the response BODY (`item` present), not just `res.ok`. Missing this (found
+  live, 2026-08-13, on a Home Health/Hospice card) reported "Synced to Lumina" while
+  writing nothing anywhere.
 
 ## Migration (Asana → MongoDB)
 

@@ -261,7 +261,7 @@ async function main() {
   if (revertFrom) return revert(revertFrom);
 
   if (!lumina.configured()) {
-    console.error('LUMINA_API_TOKEN is not set — nothing to match against.');
+    console.error('Lumina API is not configured (LUMINA_API_ENV/token vars) — nothing to match against.');
     process.exit(1);
   }
 

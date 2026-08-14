@@ -15,17 +15,39 @@
 //      budget, dates, KPI, geo, team, GTM, build details). That is the card read
 //      path; the list is only for the attach dropdown.
 
-const BASE = process.env.LUMINA_API_BASE
-  // Default to PRODUCTION. It used to default to release11, whose data was frozen
-  // ~2026-05-22 — every line item created after that answered {found:false}, so new
-  // campaigns silently couldn't be viewed or attached. A missing env var must not
-  // land you back in that state. Note release and production need DIFFERENT tokens.
-  || 'https://townsquarelumina.com/lumina/orders/api/ignite/ext';
-const TOKEN = process.env.LUMINA_API_TOKEN;
+// Rel11 vs production, same explicit-switch pattern as server/lib/luminaComments.js:
+// LUMINA_API_ENV picks BOTH the base host and its token together, so the two can never
+// drift apart (a rel11 base with a prod token — or vice versa — 401s everything).
+//
+// NOTE (2026-08-13): deliberately defaulting to REL11 right now, while we're still
+// importing/testing boards — production has real advertiser/campaign data and reads
+// should stay pointed at the test environment until we're ready to go live. Flip
+// LUMINA_API_ENV=production explicitly when that day comes. (Earlier, before this
+// switch existed, the single LUMINA_API_BASE var defaulted to production because
+// rel11's data was frozen ~2026-05-22 and a stale default silently hid new campaigns —
+// that risk doesn't apply here since going live is now a deliberate env flip, not an
+// accidental unset var.)
+const API_ENVS = {
+  rel11: {
+    base: 'https://release11.townsquarelumina.com/lumina/orders/api/ignite/ext',
+    webBase: 'https://release11.townsquarelumina.com',
+    token: process.env.LUMINA_API_TOKEN_REL11,
+  },
+  production: {
+    base: 'https://townsquarelumina.com/lumina/orders/api/ignite/ext',
+    webBase: 'https://www.townsquarelumina.com',
+    token: process.env.LUMINA_API_TOKEN_PROD,
+  },
+};
+const API_ENV_NAME = process.env.LUMINA_API_ENV === 'production' ? 'production' : 'rel11';
+const BASE = API_ENVS[API_ENV_NAME].base;
+const TOKEN = API_ENVS[API_ENV_NAME].token;
 
-// Web (not API) host. Lumina hands us a relative `deepLinkPath` per line item, so
-// we only supply the host — no segment logic on our side.
-const WEB_BASE = process.env.LUMINA_WEB_BASE || 'https://www.townsquarelumina.com';
+// Web (not API) host. Lumina hands us a relative `deepLinkPath` per line item, so we
+// only supply the host — no segment logic on our side. LUMINA_WEB_BASE overrides if set,
+// else it follows LUMINA_API_ENV so a card's deep link always points at the same
+// environment its data came from.
+const WEB_BASE = process.env.LUMINA_WEB_BASE || API_ENVS[API_ENV_NAME].webBase;
 
 // Lumina asked us to page at ~100 rather than the documented max of 1000, to go
 // easy on their Mongo. Sequential only — never a parallel burst.

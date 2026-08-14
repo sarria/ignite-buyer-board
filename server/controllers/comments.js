@@ -3,6 +3,7 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../db');
 const { s3UrlsInHtml, deleteUrls } = require('../lib/s3');
+const luminaComments = require('../lib/luminaComments');
 
 // A comment belongs to a CARD or to a SUBTASK. Subtask comments keep `cardId` as well as
 // `subtaskId` — that's what lets the card and board delete cascades reach them without
@@ -56,7 +57,7 @@ async function createSubtaskComment(req, res) {
 async function createComment(req, res) {
   const db = await getDb();
   const cardId = new ObjectId(req.params.id);
-  const { body, bodyHtml } = req.body;
+  const { body, bodyHtml, pushToLumina } = req.body;
   if ((!body || !body.trim()) && (!bodyHtml || !bodyHtml.trim())) {
     return res.status(400).json({ error: { message: 'body is required', code: 'VALIDATION' } });
   }
@@ -69,6 +70,30 @@ async function createComment(req, res) {
     isMigrated: false,
     createdAt: new Date(),
   };
+
+  // Best-effort push to the linked Lumina line item's own comment thread. Never blocks or
+  // fails the local save — Lumina content is plain text, so the HTML-stripped `body` goes
+  // over, not `bodyHtml`.
+  if (pushToLumina) {
+    const card = await db.collection('cards').findOne({ _id: cardId }, { projection: { lumina: 1 } });
+    const lineitemId = card?.lumina?.lineitemId;
+    if (lineitemId) {
+      try {
+        const { item } = await luminaComments.postComment(lineitemId, doc.body);
+        doc.pushedToLumina = true;
+        doc.luminaCommentId = item.commentId; // lets a later edit PATCH the same Lumina note
+      } catch (err) {
+        doc.pushedToLumina = false;
+        doc.luminaPushError = err.message;
+        doc.luminaPushErrorCode = err.code || null;
+      }
+    } else {
+      doc.pushedToLumina = false;
+      doc.luminaPushError = 'Card is not linked to a Lumina line item';
+      doc.luminaPushErrorCode = 'LUMINA_COMMENTS_NO_LINK';
+    }
+  }
+
   const result = await db.collection('comments').insertOne(doc);
   res.status(201).json({ ...doc, _id: result.insertedId });
 }
@@ -93,6 +118,22 @@ async function updateComment(req, res) {
   const $set = { editedAt: new Date() };
   if (body !== undefined) $set.body = (body || '').trim();
   if (bodyHtml !== undefined) $set.bodyHtml = bodyHtml || null;
+
+  // Keep an already-synced Lumina note in sync with the edit. Only comments that were
+  // successfully pushed carry a luminaCommentId — editing one that was never pushed (or
+  // that failed to push) doesn't retroactively push it; that's still the composer's job.
+  if (comment.luminaCommentId && $set.body !== undefined) {
+    try {
+      await luminaComments.patchComment(comment.luminaCommentId, $set.body);
+      $set.pushedToLumina = true;
+      $set.luminaPushError = null;
+      $set.luminaPushErrorCode = null;
+    } catch (err) {
+      $set.pushedToLumina = false;
+      $set.luminaPushError = err.message;
+      $set.luminaPushErrorCode = err.code || null;
+    }
+  }
 
   const result = await db.collection('comments').findOneAndUpdate(
     { _id: commentId },

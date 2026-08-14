@@ -11,8 +11,9 @@ migration/asana-export-*.json
 migration/lumina-match-report.json
 migration/lumina-match-applied-*.json
 
-# External SEM API integration guide (contains a live service token — keep out of git)
+# External SEM/Luminotes API integration guides (contain a live service token — keep out of git)
 ext-sem-api-guide-asana.md
+luminotes-app-dev-guide.md
 
 # Local UI verification shots (scripts/screenshot.mjs)
 *.shot.png

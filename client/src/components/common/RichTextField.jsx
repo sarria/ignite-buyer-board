@@ -10,7 +10,7 @@ export const hasContent = (html) =>
 // re-renders only this field — not the parent panel (no per-keystroke flicker). Shows
 // a "Saving…" state while onSave runs. onSave receives the current HTML.
 export default function RichTextField({
-  initialValue = '', onSave, onCancel, saveLabel = 'Save', minHeight = 90,
+  initialValue = '', onSave, onCancel, saveLabel = 'Save', minHeight = 90, leadingControl,
 }) {
   const [html, setHtml] = useState(initialValue);
   const [saving, setSaving] = useState(false);
@@ -28,7 +28,8 @@ export default function RichTextField({
   return (
     <Box>
       <RichEditor value={initialValue} onChange={setHtml} minHeight={minHeight} />
-      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75 }}>
+        {leadingControl}
         <Button
           size="small"
           variant="contained"

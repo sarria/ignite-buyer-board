@@ -811,7 +811,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
             <Divider sx={{ my: 2 }} />
 
             {/* Comments */}
-            <CardComments cardId={card._id} comments={comments} onChange={setComments} />
+            <CardComments cardId={card._id} comments={comments} onChange={setComments} luminaLinked={!!card.lumina?.lineitemId} />
             </Box>
           </Box>
 
