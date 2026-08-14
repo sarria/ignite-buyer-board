@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, IconButton, Button, Tooltip, Chip,
+  Box, Typography, IconButton, Button, Tooltip, Chip, CircularProgress,
   Select, MenuItem, FormControl, TextField,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -181,7 +181,7 @@ function CalendarCard({ card, health, tint, users, selected, onClick, onToggleCo
 
 export default function CalendarView({
   cards, fields, users, columns = [], selectedCardId, onCardClick, onToggleComplete, onCardPatch, onAddCard,
-  addSignal = 0,
+  addSignal = 0, loadingCards = false,
 }) {
   const today = todayInput();
   // ONE date anchor drives both modes — Months renders the month containing it, Weeks the
@@ -295,6 +295,7 @@ export default function CalendarView({
           <ChevronRightIcon fontSize="small" />
         </IconButton>
         <Typography variant="h6" sx={{ ml: 0.5 }}>{label}</Typography>
+        {loadingCards && <CircularProgress size={14} thickness={5} sx={{ color: 'text.secondary' }} />}
         <Box sx={{ flex: 1 }} />
         {noDate > 0 && (
           <Tooltip title="Cards with no due date can't be placed on a calendar. Set a due date and they'll appear.">
@@ -368,6 +369,13 @@ export default function CalendarView({
           // Weeks is instead a single row filling the height, so every card fits.
           gridAutoRows: isWeek ? '1fr' : 'max-content',
           borderTop: 1, borderLeft: 1, borderColor: 'divider',
+          // Most days are legitimately empty even once loaded (few cards carry a due
+          // date at all — see the "No due date" chip), so per-day skeletons would
+          // fabricate which days have cards. Dimming the whole grid + the spinner next
+          // to the month label says "still loading" without pretending to know that yet.
+          opacity: loadingCards ? 0.35 : 1,
+          pointerEvents: loadingCards ? 'none' : 'auto',
+          transition: 'opacity .15s',
         }}
       >
         {visibleGrid.map(({ iso, day, outside }) => {

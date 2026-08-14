@@ -368,6 +368,10 @@ lists scroll, never the page (mirrors Asana).
   indented**, fetched on first expand (`getCard`) since the card list doesn't carry them.
   Header is sticky. One CSS-grid template is shared by the header, card rows and subtask
   rows — that, not measurement, is what keeps columns aligned across groups.
+  **While cards are still loading (`loadingCards`), each group shows a skeleton row and
+  hides its count** instead of rendering as an empty group — mirrors the board view's
+  per-card skeletons (`BoardColumn`), just row-shaped; without it a still-loading board
+  looked identical to a genuinely empty one.
   Adding here does NOT open the drawer (unlike the board composer): rows are added in runs.
   `Add task` also lives in the board's top bar (shared by all three views) because the
   per-group one sits below every row — a 2,000-row scroll on a big column.
@@ -445,6 +449,11 @@ lists scroll, never the page (mirrors Asana).
   never silently dropped** — on these boards most cards have no due date (Rachel's: 1,262
   of 2,423 do), so hiding them without saying so would badly mislead.
   Only the day grid scrolls, so the page still never does.
+  **While cards are loading (`loadingCards`)**, the grid dims (opacity, `pointerEvents:
+  none`) and a small spinner sits next to the month label — NOT per-day skeleton cards
+  like the board/list views. Most days are legitimately empty even once loaded (few
+  cards carry a due date — see the "No due date" chip), so a fabricated skeleton card on
+  every day would misrepresent which days actually have work due.
 - **ArchivedGrid** — the archive view (archive toggle in the top bar) is a flat,
   responsive **grid/gallery** of `ArchivedCard`s, NOT the column layout. Cards are
   read-only; each shows a small uppercase **column-name label** (the column it lived

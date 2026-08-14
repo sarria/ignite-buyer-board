@@ -646,6 +646,7 @@ export default function BoardPage() {
           fields={fields}
           users={users}
           selectedCardId={drawerCardId}
+          loadingCards={cardsLoading}
           onCardClick={card => openCard(card._id)}
           onToggleComplete={handleToggleComplete}
           onCardPatch={handleCardPatch}
@@ -670,6 +671,7 @@ export default function BoardPage() {
           onCardPatch={handleCardPatch}
           onAddCard={handleAddCardOnDate}
           addSignal={addSignal}
+          loadingCards={cardsLoading}
         />
       ) : showArchived ? (
         <ArchivedGrid

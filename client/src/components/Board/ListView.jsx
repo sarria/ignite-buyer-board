@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Tooltip, IconButton, TextField, CircularProgress,
+  Box, Typography, Tooltip, IconButton, TextField, CircularProgress, Skeleton,
   Menu, MenuItem, ListItemIcon, ListItemText,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -170,15 +170,28 @@ function Group({ col, children, collapsed, onToggle, count }) {
         </Box>
         {collapsed ? <ChevronRightIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
         <Typography variant="subtitle2" fontWeight={700}>{col.name}</Typography>
-        <Typography variant="caption" color="text.secondary">{count}</Typography>
+        {count !== null && <Typography variant="caption" color="text.secondary">{count}</Typography>}
       </Box>
       {children}
     </Box>
   );
 }
 
+// Stands in for a group's rows while cards are still loading, so an empty group doesn't
+// read as "this column has nothing in it" — same intent as the board view's card
+// skeletons (BoardColumn), just row-shaped instead of card-shaped.
+function SkeletonRow({ gridTemplate }) {
+  return (
+    <Box sx={{ display: 'grid', gridTemplateColumns: gridTemplate, height: 40, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Cell><Skeleton variant="text" width="60%" /></Cell>
+      <Cell><Skeleton variant="circular" width={22} height={22} /></Cell>
+      <Cell><Skeleton variant="text" width="70%" /></Cell>
+    </Box>
+  );
+}
+
 export default function ListView({
-  cards, columns = [], fields = [], users = [], selectedCardId,
+  cards, columns = [], fields = [], users = [], selectedCardId, loadingCards = false,
   onCardClick, onToggleComplete, onCardPatch, onCardFieldChange, onAddCard, onReorderColumns, boardId, addSignal = 0,
   sortBy = SORT_NONE, sortDir = 'asc', onSortChange,
 }) {
@@ -332,12 +345,16 @@ export default function ListView({
             <Group
               key={col._id}
               col={col}
-              count={rows.length}
+              count={loadingCards ? null : rows.length}
               collapsed={isCollapsed}
               onToggle={() => setCollapsed(p => ({ ...p, [col._id]: !p[col._id] }))}
             >
 
-              {!isCollapsed && rows.map(card => {
+              {!isCollapsed && loadingCards && (
+                <SkeletonRow gridTemplate={GRID} />
+              )}
+
+              {!isCollapsed && !loadingCards && rows.map(card => {
                 const done = !!card.isCompleted;
                 const linked = !!(card.lumina?.lineitemId || card.lumina?.advertiserId);
                 const subCount = card.subtaskCount || 0;
@@ -527,7 +544,7 @@ export default function ListView({
               })}
 
               {/* Add task at the end of each group, as Asana does */}
-              {!isCollapsed && onAddCard && (
+              {!isCollapsed && !loadingCards && onAddCard && (
                 <Box sx={{ display: 'grid', gridTemplateColumns: GRID, height: 36, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
                   <Cell>
                     {addingIn === col._id ? (
