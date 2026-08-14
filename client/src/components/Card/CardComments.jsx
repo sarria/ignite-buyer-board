@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Avatar, Divider, Chip, IconButton, Tooltip, Checkbox, FormControlLabel } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import { createComment, updateComment } from '../../api/comments';
@@ -34,11 +34,22 @@ export default function CardComments({ cardId, comments, onChange, onCreate, hea
   // Defaults ON: a linked card's comments are usually meant for Lumina too, and the buyer
   // opts out per-comment rather than remembering to opt in every time.
   const [pushToLumina, setPushToLumina] = useState(true);
+  const bottomRef = useRef(null);
+  const scrollPending = useRef(false);
+
+  // Fires after the new comment has actually rendered (not a guessed delay), so the
+  // thread's now-taller layout is what gets scrolled, not the one from before it landed.
+  useEffect(() => {
+    if (!scrollPending.current) return;
+    scrollPending.current = false;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [comments]);
 
   const handleAdd = async (html) => {
     const payload = { body: stripHtml(html), bodyHtml: html };
     if (luminaLinked && pushToLumina) payload.pushToLumina = true;
     const created = onCreate ? await onCreate(payload) : await createComment(cardId, payload);
+    scrollPending.current = true;
     onChange([...comments, created]);
     setEditorKey(k => k + 1); // reset composer
     setPushToLumina(true); // back to the default for the next comment
@@ -153,6 +164,7 @@ export default function CardComments({ cardId, comments, onChange, onCreate, hea
           />
         </Box>
       </Box>
+      <div ref={bottomRef} />
     </Box>
   );
 }
