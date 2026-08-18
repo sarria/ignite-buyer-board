@@ -13,9 +13,10 @@ import RichContent from '../common/RichContent';
 // The detail payload is a DOCUMENT whose field set varies by product, so the
 // sections below are a display order, not a schema: any key we don't place lands
 // in "Other", and anything Lumina adds later shows up with no code change.
-// The admin setting (/admin/lumina-fields) passes a Set of keys to HIDE — not to
-// show. That way a field Lumina returns but our catalog sample never saw (states,
-// zipcodes, creativeInstructions…) still appears instead of silently vanishing.
+// The board's Lumina settings tab (Board settings → Lumina) passes a Set of keys to
+// HIDE — not to show. That way a field Lumina returns but our catalog sample never
+// saw (states, zipcodes, creativeInstructions…) still appears instead of silently
+// vanishing.
 
 // Lumina's own page omits a field it has no value for (an unfilled team role, an
 // unused geo option) rather than printing a blank row — so do we. `false` and 0

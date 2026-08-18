@@ -6,7 +6,6 @@ import {
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
-import TuneIcon from '@mui/icons-material/Tune';
 import HomeIcon from '@mui/icons-material/Home';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import LogoutIcon from '@mui/icons-material/Logout';
@@ -27,7 +26,6 @@ export default function Sidebar() {
   const { id: activeBoardId } = useParams();
   const location = useLocation();
   const isUsers = location.pathname === '/admin/users';
-  const isLuminaFields = location.pathname === '/admin/lumina-fields';
   const isHome = location.pathname === '/dashboard';
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -255,16 +253,6 @@ export default function Sidebar() {
               {!collapsed && (
                 <Typography variant="body2" noWrap sx={{ color: isUsers ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 13 }}>
                   Users
-                </Typography>
-              )}
-            </Box>
-          </Tooltip>
-          <Tooltip title="Lumina fields" placement="right" disableHoverListener={!collapsed}>
-            <Box onClick={() => navigate('/admin/lumina-fields')} sx={navRowSx(isLuminaFields)}>
-              <TuneIcon sx={{ fontSize: 18, color: isLuminaFields ? '#fff' : 'rgba(255,255,255,0.5)', flexShrink: 0 }} />
-              {!collapsed && (
-                <Typography variant="body2" noWrap sx={{ color: isLuminaFields ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 13 }}>
-                  Lumina fields
                 </Typography>
               )}
             </Box>

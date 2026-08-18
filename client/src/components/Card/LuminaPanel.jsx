@@ -10,7 +10,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import {
   searchLuminaLineItems, getLuminaLineItem, getLuminaAdvertiser,
 } from '../../api/lumina';
-import { getLuminaFieldSettings, getBoardLuminaFieldSettings } from '../../api/settings';
+import { getBoardLuminaFieldSettings } from '../../api/settings';
 
 import LuminaSnapshot from './LuminaSnapshot';
 import Collapsible from '../common/Collapsible';
@@ -96,13 +96,12 @@ export default function LuminaPanel({ lumina, readOnly, onChange, boardId }) {
   const [open, setOpen] = useState(true);
   const [fieldSettings, setFieldSettings] = useState(null);
 
-  // Which fields are HIDDEN for THIS board — the server resolves the board's own
-  // selection or falls back to the global one. Cached per board id, so this is one
+  // Which fields are HIDDEN for THIS board. Cached per board id, so this is one
   // network call per board and then free on every later card open. A failure here
   // must not hide data — an empty setting means show everything.
   useEffect(() => {
     let cancelled = false;
-    const load = boardId ? getBoardLuminaFieldSettings(boardId) : getLuminaFieldSettings();
+    const load = getBoardLuminaFieldSettings(boardId);
     load
       .then(s => { if (!cancelled) setFieldSettings(s); })
       .catch(() => { if (!cancelled) setFieldSettings({}); });

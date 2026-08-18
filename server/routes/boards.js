@@ -36,7 +36,7 @@ router.get('/:id/templates', templateCtrl.listTemplates);
 router.post('/:id/templates', templateCtrl.createTemplate);
 router.put('/:id/templates/reorder', templateCtrl.reorderTemplates);
 
-// Lumina field selection for this board (absent = inherit the global setting)
+// Lumina field selection for this board (absent = show everything)
 router.get('/:id/lumina-fields', settingsCtrl.getBoardLuminaFields);
 router.put('/:id/lumina-fields', requireAdmin, settingsCtrl.updateBoardLuminaFields);
 router.delete('/:id/lumina-fields', requireAdmin, settingsCtrl.resetBoardLuminaFields);

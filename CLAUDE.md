@@ -63,11 +63,10 @@ ES modules; backend uses CommonJS. Async/await everywhere. No inline styles — 
 │       │   ├── Card/                # CardDrawer, CardComments, CardSubtasks
 │       │   ├── common/              # Sidebar, RichEditor, RichTextField, RichContent,
 │       │   │                        #   Collapsible, DueDatePicker
-│       │   └── settings/            # LuminaFieldPicker (shared by the global + board pickers)
+│       │   └── settings/            # LuminaFieldPicker (used by the board Lumina tab)
 │       ├── context/                 # AppContext (theme light/dark)
 │       ├── pages/                   # BoardListPage (dashboard), BoardPage,
-│       │   │                        #   BoardSettingsPage, AdminUsersPage,
-│       │   │                        #   AdminLuminaFieldsPage
+│       │   │                        #   BoardSettingsPage, AdminUsersPage
 │       │   └── settings/            # ColumnsTab, FieldsTab, TemplatesTab, LuminaTab
 │       ├── utils/                   # tagColor, userColor, linkify, lastBoard,
 │       │                            #   boardCache, luminaFields, dueDate, cardFilters
@@ -101,8 +100,7 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
 `connectDb()` (so serverless invocations work without a startup hook).
 
 ### Collections
-`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates,
-app_settings`
+`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates`
 
 ### Document shapes (current)
 
@@ -113,7 +111,7 @@ app_settings`
 // boards
 { _id, name, description, createdBy, createdAt, asanaProjectGid, isArchived,
   luminaFields: { hiddenLineItemFields:[String], hiddenAdvertiserFields:[String],
-                  updatedAt, updatedBy } | absent }   // absent = inherit the global setting
+                  updatedAt, updatedBy } | absent }   // absent = show every field
 
 // columns  (per board)
 { _id, boardId, name, position, color /*hex*/, asanaGid, createdAt }
@@ -153,11 +151,6 @@ app_settings`
                           // Lumina > Comments push. luminaCommentId is Lumina's own id for
                           // the note, kept so a later edit can PATCH the same note there.
   asanaGid, createdAt /*preserve original Asana timestamp on migration*/ }
-
-// app_settings  — app-wide config as single named docs (string _id). NOT per-board,
-//                 so nothing here is touched by the board delete cascade.
-{ _id: 'luminaFields', advertiserFields: [String], lineItemFields: [String],
-  updatedAt, updatedBy }   // absent doc = show every Lumina field
 
 // card_templates  (per board)
 { _id, boardId, name, descriptionTemplate, defaultColumnId, defaultAssigneeId,
@@ -205,10 +198,8 @@ Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · DELETE
 Comments   GET/POST /cards/:id/comments {body, bodyHtml, pushToLumina?} · PUT /comments/:id · DELETE(admin) /comments/:id
            GET/POST /subtasks/:id/comments — the subtask thread
 Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
-Settings   GET /settings/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
-           PUT(admin) {hiddenLineItemFields[], hiddenAdvertiserFields[]} · DELETE(admin) = back to "show all"
-           GET /boards/:id/lumina-fields → same + {inherited} (board's own selection, else global)
-           PUT(admin) = set this board's override · DELETE(admin) = inherit the global one again
+Settings   GET /boards/:id/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
+           PUT(admin) = set this board's field selection · DELETE(admin) = back to "show all"
 Templates  GET/POST /boards/:id/templates · PUT /boards/:id/templates/reorder
            PUT /templates/:id · DELETE /templates/:id · POST /templates/:id/apply {columnId?}
 Uploads    POST /uploads/presign {filename, contentType} → {uploadUrl, publicUrl, key}
@@ -771,21 +762,18 @@ real campaigns with it.
   `tacticDetails`==`tactics`).
 - **Blank values are omitted, not printed as an empty row** — Lumina's page does the
   same. `false` and `0` are values and still render.
-- **Which fields show is an admin setting, global with a PER-BOARD override.** The
-  global default lives at `/admin/lumina-fields` (`AdminLuminaFieldsPage`, sidebar ->
-  "Lumina fields") in `app_settings._id='luminaFields'`; a board can override it in
-  Board settings -> **Lumina** (`pages/settings/LuminaTab.jsx`), stored as
-  `luminaFields` on the **board doc**. Resolution is **board -> global -> show
-  everything**, done server-side in `getBoardLuminaFields`, which also returns
-  `inherited` so the tab can say which one you're looking at. "Use the global
-  selection" `$unset`s the override — that is NOT the same as "show everything",
-  which only the global setting can say. Effective on the next card open. Read path is
-  cached per board id in `api/settings.js` - one request per board, not one per card
-  open; a failure falls back to showing everything rather than hiding data.
-  Both pickers render the SAME `components/settings/LuminaFieldPicker.jsx` so they
-  can't drift; the staleness/hide-list rules live in one `usableSelection()` in
-  `server/controllers/settings.js` for the same reason.
-  The override rides on the board doc **on purpose**: the board delete cascade takes it
+- **Which fields show is a PER-BOARD setting only — no global setting.** (Removed
+  2026-08-18: a global default with a per-board override existed briefly, but buyers
+  don't want a shared default at all — every board picks its own.) Set in Board
+  settings -> **Lumina** (`pages/settings/LuminaTab.jsx`), stored as `luminaFields` on
+  the **board doc**; absent means "show everything" (the only default — there's nothing
+  to fall back to). Resolved server-side in `getBoardLuminaFields`. Effective on the
+  next card open. Read path is cached per board id in `api/settings.js` - one request
+  per board, not one per card open; a failure falls back to showing everything rather
+  than hiding data. The picker UI is `components/settings/LuminaFieldPicker.jsx`; the
+  staleness/hide-list rules live in `usableSelection()` in
+  `server/controllers/settings.js`.
+  The setting rides on the board doc **on purpose**: the board delete cascade takes it
   along automatically, so there's no new per-board collection to wire in.
 - **The setting stores what is HIDDEN, not what is kept** (`hiddenLineItemFields` /
   `hiddenAdvertiserFields`). This is load-bearing, not a style choice: the line item is a

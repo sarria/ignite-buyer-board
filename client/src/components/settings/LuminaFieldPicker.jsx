@@ -1,9 +1,8 @@
 import { Box, Typography, Checkbox, FormControlLabel, Button, Divider } from '@mui/material';
 import { luminaLabel, LUMINA_SPARSE, groupLuminaFields } from '../../utils/luminaFields';
 
-// The tick-boxes for "which Lumina fields does a card show". Shared by the global
-// admin page and the per-board Lumina tab so the two can never drift — only the
-// surrounding page differs (what it saves to, and what it says about scope).
+// The tick-boxes for "which Lumina fields does a card show", used by the per-board
+// Lumina settings tab.
 //
 // NOTE: the caller works in VISIBLE keys; the server stores HIDDEN ones. Inverting
 // lives with whoever saves, because "hidden" is what makes unknown/new fields show
