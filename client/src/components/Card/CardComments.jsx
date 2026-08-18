@@ -31,9 +31,8 @@ function formatDate(d) {
 export default function CardComments({ cardId, comments, onChange, onCreate, heading = 'Comments', luminaLinked = false }) {
   const [editorKey, setEditorKey] = useState(0); // bump to reset the composer
   const [editingId, setEditingId] = useState(null);
-  // Defaults ON: a linked card's comments are usually meant for Lumina too, and the buyer
-  // opts out per-comment rather than remembering to opt in every time.
-  const [pushToLumina, setPushToLumina] = useState(true);
+  // Defaults OFF: the buyer opts in per-comment to push a comment to Lumina.
+  const [pushToLumina, setPushToLumina] = useState(false);
   const bottomRef = useRef(null);
   const scrollPending = useRef(false);
 
@@ -52,7 +51,7 @@ export default function CardComments({ cardId, comments, onChange, onCreate, hea
     scrollPending.current = true;
     onChange([...comments, created]);
     setEditorKey(k => k + 1); // reset composer
-    setPushToLumina(true); // back to the default for the next comment
+    setPushToLumina(false); // back to the default for the next comment
   };
 
   const handleSaveEdit = async (comment, html) => {

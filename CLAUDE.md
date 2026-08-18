@@ -815,15 +815,14 @@ stays "show everything" until someone narrows it.
 
 ### Comments push ("push comment to Lumina")
 
-A card comment's composer shows a **"Push to Lumina" checkbox**, inline with the Save
-button (checkbox first) — only when the card is linked to a line item
-(`card.lumina.lineitemId`) — that also posts the comment into that line item's own
-buyer-notes thread via Lumina's Comments API (`ext-comments-api-guide-luminotes.md`,
-LM-4131). **On by default** (a linked card's comments are usually meant for Lumina too;
-the buyer opts OUT per-comment rather than remembering to opt in), and resets back to
-checked after each save. `RichTextField` takes a generic `leadingControl` node rendered
-before its Save button for this — kept generic rather than Lumina-specific since the
-component is shared by descriptions/subtask notes too.
+A card comment's composer shows a **"Push to Lumina" checkbox**, right-aligned opposite
+the Save button — only when the card is linked to a line item (`card.lumina.lineitemId`)
+— that also posts the comment into that line item's own buyer-notes thread via Lumina's
+Comments API (`ext-comments-api-guide-luminotes.md`, LM-4131). **Off by default** (the
+buyer opts IN per-comment), and resets back to unchecked after each save. `RichTextField`
+takes a generic `leadingControl` node rendered at the right edge of its Save/Cancel row
+for this — kept generic rather than Lumina-specific since the component is shared by
+descriptions/subtask notes too.
 `server/lib/luminaComments.js` is a separate client from `lumina.js` (different
 token/scopes: `data:read:comments`/`data:write:comments`).
 

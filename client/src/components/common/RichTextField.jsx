@@ -29,7 +29,6 @@ export default function RichTextField({
     <Box>
       <RichEditor value={initialValue} onChange={setHtml} minHeight={minHeight} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75 }}>
-        {leadingControl}
         <Button
           size="small"
           variant="contained"
@@ -49,6 +48,7 @@ export default function RichTextField({
             Cancel
           </Button>
         )}
+        {leadingControl && <Box sx={{ ml: 'auto' }}>{leadingControl}</Box>}
       </Box>
     </Box>
   );
