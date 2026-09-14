@@ -34,9 +34,12 @@ async function upsertUser(email, name, microsoftId) {
   if (existing) {
     return users.findOneAndUpdate({ _id: existing._id }, { $set }, { returnDocument: 'after' });
   }
+  // role lives in $set when admin (above) — putting it in BOTH $set and
+  // $setOnInsert on the same upsert is a MongoDB ConflictingUpdateOperators error,
+  // so $setOnInsert only supplies it for the non-admin case.
   return users.findOneAndUpdate(
     { email },
-    { $set, $setOnInsert: { email, role: isAdmin ? 'admin' : 'member', createdAt: new Date() } },
+    { $set, $setOnInsert: { email, createdAt: new Date(), ...(!isAdmin && { role: 'member' }) } },
     { upsert: true, returnDocument: 'after' }
   );
 }
