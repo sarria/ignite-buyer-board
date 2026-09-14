@@ -1,12 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { AppProvider } from './context/AppContext';
-import AccessGate from './components/common/AccessGate';
+import { AuthProvider } from './context/AuthContext';
+import AuthWall from './components/common/AuthWall';
 import Sidebar from './components/common/Sidebar';
 import BoardListPage from './pages/BoardListPage';
 import BoardPage from './pages/BoardPage';
 import BoardSettingsPage from './pages/BoardSettingsPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import LoginPage from './pages/LoginPage';
+import LoginCallback from './pages/LoginCallback';
 import { getLastBoardId } from './utils/lastBoard';
 
 // Land on the last board the user viewed, or the dashboard if there's no history.
@@ -29,21 +32,24 @@ function SidebarLayout() {
 export default function App() {
   return (
     <AppProvider>
-      {/* TEMPORARY access gate — remove when MSAL SSO lands (see AccessGate). */}
-      <AccessGate>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<HomeRedirect />} />
-          <Route element={<SidebarLayout />}>
-            <Route path="/dashboard" element={<BoardListPage />} />
-            <Route path="/boards/:id" element={<BoardPage />} />
-            <Route path="/boards/:id/settings" element={<BoardSettingsPage />} />
-            <Route path="/admin/users" element={<AdminUsersPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            {/* Public — signing in can't require being signed in. */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/login/callback" element={<LoginCallback />} />
+
+            <Route path="/" element={<AuthWall><HomeRedirect /></AuthWall>} />
+            <Route element={<AuthWall><SidebarLayout /></AuthWall>}>
+              <Route path="/dashboard" element={<BoardListPage />} />
+              <Route path="/boards/:id" element={<BoardPage />} />
+              <Route path="/boards/:id/settings" element={<BoardSettingsPage />} />
+              <Route path="/admin/users" element={<AdminUsersPage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
-      </AccessGate>
     </AppProvider>
   );
 }

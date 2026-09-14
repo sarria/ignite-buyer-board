@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://localhost:3001',
+      // Default matches the server's default PORT. Override when 3001 is already
+      // taken (the aiagent view's dev server claims it): VITE_API_PROXY=http://localhost:3011
+      '/api': process.env.VITE_API_PROXY || 'http://localhost:3001',
     },
   },
 })

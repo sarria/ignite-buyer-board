@@ -19,3 +19,7 @@ luminotes-app-dev-guide.md
 *.shot.png
 cal.png
 screenshot.png
+
+# env files (exact-match .env missed .env.bak-* and .env.local)
+.env*
+!.env.example

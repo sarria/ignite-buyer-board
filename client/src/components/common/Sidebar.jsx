@@ -10,7 +10,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { getBoards } from '../../api/boards';
-import { lockApp } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { userColor } from '../../utils/userColor';
 
 const WIDTH_COLLAPSED = 60;
@@ -29,7 +29,8 @@ export default function Sidebar() {
   const isHome = location.pathname === '/dashboard';
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmLock, setConfirmLock] = useState(false);
+  const { user, signOut } = useAuth();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
   });
@@ -105,6 +106,8 @@ export default function Sidebar() {
   });
 
   const currentWidth = collapsed ? WIDTH_COLLAPSED : width;
+  const displayName = user?.name || user?.email || 'Signed in';
+  const roleLabel = user?.role === 'admin' ? 'Admin' : 'Member';
 
   return (
     <Box
@@ -262,21 +265,21 @@ export default function Sidebar() {
         {/* Bottom user area */}
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
         <Box sx={{ px: collapsed ? 0 : 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-          <Tooltip title={collapsed ? 'Dev User · Admin' : ''} placement="right" disableHoverListener={!collapsed}>
-            <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: userColor('Dev User'), flexShrink: 0 }}>D</Avatar>
+          <Tooltip title={collapsed ? `${displayName} · ${roleLabel}` : ''} placement="right" disableHoverListener={!collapsed}>
+            <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: userColor(displayName), flexShrink: 0 }}>
+              {displayName.charAt(0).toUpperCase()}
+            </Avatar>
           </Tooltip>
           {!collapsed && (
             <>
               <Box sx={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
-                <Typography variant="body2" noWrap sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Dev User</Typography>
-                <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>Admin</Typography>
+                <Typography variant="body2" noWrap sx={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>{displayName}</Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{roleLabel}</Typography>
               </Box>
-              {/* TEMPORARY: locks the shared-password gate on this browser. Becomes a
-                  real sign-out when MSAL SSO lands. TODO(auth). */}
-              <Tooltip title="Lock — forget the access password on this browser" placement="top">
+              <Tooltip title="Sign out" placement="top">
                 <IconButton
                   size="small"
-                  onClick={() => setConfirmLock(true)}
+                  onClick={() => setConfirmSignOut(true)}
                   sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}
                 >
                   <LogoutIcon sx={{ fontSize: 17 }} />
@@ -285,10 +288,10 @@ export default function Sidebar() {
             </>
           )}
           {collapsed && (
-            <Tooltip title="Lock" placement="right">
+            <Tooltip title="Sign out" placement="right">
               <IconButton
                 size="small"
-                onClick={() => setConfirmLock(true)}
+                onClick={() => setConfirmSignOut(true)}
                 sx={{ color: 'rgba(255,255,255,0.5)', '&:hover': { color: '#fff' } }}
               >
                 <LogoutIcon sx={{ fontSize: 17 }} />
@@ -297,20 +300,19 @@ export default function Sidebar() {
           )}
         </Box>
 
-        {/* Everyone shares one password, so make it clear what this does — and that
-            they'll need it again to get back in. */}
-        <Dialog open={confirmLock} onClose={() => setConfirmLock(false)}>
-          <DialogTitle>Lock this browser?</DialogTitle>
+        {/* Signing out ends the Buyer Board session only — the Microsoft session
+            stays, so signing back in is one click. */}
+        <Dialog open={confirmSignOut} onClose={() => setConfirmSignOut(false)}>
+          <DialogTitle>Sign out?</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary">
-              The access password will be forgotten on this browser and you'll need to
-              enter it again. Everyone shares the same password, so this doesn't sign
-              anyone else out.
+              You'll be returned to the sign-in screen. Your Microsoft session stays
+              active, so signing back in takes one click.
             </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setConfirmLock(false)}>Cancel</Button>
-            <Button variant="contained" onClick={lockApp}>Lock</Button>
+            <Button onClick={() => setConfirmSignOut(false)}>Cancel</Button>
+            <Button variant="contained" onClick={signOut}>Sign out</Button>
           </DialogActions>
         </Dialog>
       </Box>

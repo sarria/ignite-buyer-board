@@ -13,10 +13,12 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
     "@aws-sdk/s3-request-presigner": "^3.1075.0",
+    "@azure/msal-node": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.3.0",
     "node-fetch": "^3.3.2"
   },

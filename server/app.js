@@ -11,13 +11,12 @@ const app = express();
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
 
-// Auth applied globally; swap stub for real MSAL middleware here when ready
-app.use('/api', requireAuth);
+// Sign-in routes come BEFORE the global gate — they are how a session is obtained,
+// so they can't require one. /auth/me applies requireAuth itself.
+app.use('/api/auth', require('./routes/auth'));
 
-// TEMPORARY: lets the frontend access-gate detect whether a password is required
-// and whether the one it holds is valid. Passes requireAuth above → 200 only when
-// the password is correct (or the gate is disabled). Remove with the gate.
-app.get('/api/auth/check', (req, res) => res.json({ ok: true }));
+// Everything else requires a verified Microsoft SSO session.
+app.use('/api', requireAuth);
 
 // Routes
 app.use('/api/boards', require('./routes/boards'));

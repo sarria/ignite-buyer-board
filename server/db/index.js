@@ -8,10 +8,13 @@ let db;
 async function connectDb() {
   if (db) return db;
 
-  client = new MongoClient(process.env.MONGODB_URI, {
-    tls: true,
-    tlsAllowInvalidCertificates: false,
-  });
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI must be set');
+
+  // TLS is required by Atlas (always `mongodb+srv://`) and unsupported by the plain
+  // Mongo on devbox — forcing it on unconditionally made a local DB unusable.
+  const isAtlas = uri.startsWith('mongodb+srv://');
+  client = new MongoClient(uri, isAtlas ? { tls: true, tlsAllowInvalidCertificates: false } : {});
   await client.connect();
   db = client.db();
 

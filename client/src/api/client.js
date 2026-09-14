@@ -7,30 +7,40 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// TEMPORARY access gate: send the shared demo password (if the user has entered
-// one) on every request. Remove when real SSO lands. See AccessGate + auth.js.
-export const ACCESS_PW_KEY = 'accessPassword';
+// The JWT our server mints after Microsoft SSO. There is no server-side session
+// (Vercel functions / k8s pods share no store) — this token IS the session.
+export const AUTH_TOKEN_KEY = 'buyerBoard.token';
 
-// "Log out" for the shared-password gate: forget the password on THIS browser and
-// reload, so the lock screen comes back and nothing stays in memory (board cache,
-// open card, field settings) for whoever sits down next. There is no server-side
-// session to end — the password is the whole gate. Remove with AccessGate when
-// MSAL SSO lands. TODO(auth).
-export function lockApp() {
-  localStorage.removeItem(ACCESS_PW_KEY);
-  window.location.assign('/');
+export const getToken = () => localStorage.getItem(AUTH_TOKEN_KEY);
+export const setToken = (token) => localStorage.setItem(AUTH_TOKEN_KEY, token);
+export const clearToken = () => localStorage.removeItem(AUTH_TOKEN_KEY);
+
+// Signing out only forgets OUR session — it deliberately does not end the
+// Microsoft SSO session, so "Sign in with Microsoft" re-authenticates without a
+// password prompt (standard SSO logout, same as Aura Studio). The hard navigate
+// is on purpose: nothing (board cache, open card, cached settings) may survive
+// for whoever uses the machine next.
+export function signOut() {
+  clearToken();
+  window.location.assign('/login');
 }
+
 api.interceptors.request.use((config) => {
-  const pw = localStorage.getItem(ACCESS_PW_KEY);
-  if (pw) config.headers['x-access-password'] = pw;
+  const token = getToken();
+  if (token) config.headers['Authorization'] = `Bearer ${token}`;
   return config;
 });
 
 api.interceptors.response.use(
   res => res,
   err => {
-    // Wrong/expired demo password → drop it so the gate re-locks. (TEMPORARY)
-    if (err.response?.status === 401) localStorage.removeItem(ACCESS_PW_KEY);
+    // Expired/invalid session: drop the token and let the React layer route to
+    // /login. A hard redirect from here would fight the router and can loop on
+    // the very request that checks whether we're signed in.
+    if (err.response?.status === 401) {
+      clearToken();
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+    }
     if (err.response?.status >= 500) {
       console.error('Server error:', err.response.data);
     }

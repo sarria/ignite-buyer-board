@@ -2,7 +2,11 @@
 
 Base URL: `http://localhost:3001/api`
 
-All endpoints require auth (currently bypassed — dev user attached automatically).
+All endpoints require a Microsoft SSO session: send `Authorization: Bearer <jwt>`, the
+token minted by `GET /api/auth/callback`. The exceptions are `/api/auth/config`,
+`/api/auth/login` and `/api/auth/callback` (public — they're how you get a session) and
+`/health`. With `MSAL_CLIENT_ID`/`MSAL_CLIENT_SECRET` unset outside production, a
+hardcoded dev user is attached instead so a local checkout runs without Entra.
 Admin-only endpoints are marked **[admin]**.
 
 ---

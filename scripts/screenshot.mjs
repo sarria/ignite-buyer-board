@@ -7,7 +7,7 @@
 // Usage (dev server must already be running):
 //   node scripts/screenshot.mjs "/boards/<id>?view=calendar" out.png [width] [height]
 //
-// Seeds the shared access password into localStorage first, otherwise every page is the
+// Seeds a session token into localStorage first, otherwise every page is the
 // AccessGate lock screen (see CLAUDE.md → Auth).
 
 import { spawn } from 'node:child_process';
@@ -21,6 +21,8 @@ const ORIGIN = process.env.SCREENSHOT_ORIGIN || 'http://localhost:5173';
 const PORT = 9222;
 
 const BROWSERS = [
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -91,15 +93,17 @@ try {
   await send('Runtime.enable');
   await send('Console.enable');
 
-  // Origin first, so localStorage is writable for it, then seed the gate password.
+  // Origin first, so localStorage is writable for it, then seed the session.
   await send('Page.navigate', { url: ORIGIN });
   await waitForEvent('Page.loadEventFired');
-  const pw = process.env.ACCESS_PASSWORD || '';
+  // With MSAL unset locally the server hands back the dev user and no token is needed;
+  // set SHOT_TOKEN=<jwt> to shoot a server that has SSO configured.
+  const token = process.env.SHOT_TOKEN || '';
   // SHOT_STORAGE='{"calendar.mode":"week"}' seeds extra keys. Needed for anything a
   // component reads once at mount — setting it after load is too late.
   const extra = JSON.parse(process.env.SHOT_STORAGE || '{}');
   await send('Runtime.evaluate', {
-    expression: `localStorage.setItem('accessPassword', ${JSON.stringify(pw)});
+    expression: `${token ? `localStorage.setItem('buyerBoard.token', ${JSON.stringify(token)});` : ''}
       Object.entries(${JSON.stringify(extra)}).forEach(([k, v]) => localStorage.setItem(k, v)); 'ok'`,
   });
 

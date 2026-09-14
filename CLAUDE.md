@@ -41,7 +41,8 @@ Asana where sections and task templates are project-scoped.
   for file storage.
 - **Database**: MongoDB Atlas.
 - **File/image storage**: AWS S3 (see "Files & Images").
-- **Auth**: **currently a stub** (hardcoded dev user). Microsoft SSO via MSAL is planned.
+- **Auth**: **Microsoft SSO (Entra ID)** — `@azure/msal-node` confidential client on
+  the server, `jsonwebtoken` for our own stateless session token.
 - **Hosting**: Vercel (client built static + Express as a serverless function).
 
 Do not introduce TypeScript, GraphQL, Mongoose, or other frameworks. Frontend uses
@@ -106,7 +107,8 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
 
 ```javascript
 // users
-{ _id, name, email /*unique*/, role /*'admin'|'member'*/, microsoftId, defaultBoardId, createdAt }
+{ _id, name, email /*unique*/, role /*'admin'|'member'*/, microsoftId /*unique sparse;
+  only written when Entra returns one*/, defaultBoardId, deactivated, lastLoginAt, createdAt }
 
 // boards
 { _id, name, description, createdBy, createdAt, asanaProjectGid, isArchived,
@@ -207,6 +209,10 @@ Lumina     GET /lumina/status → {configured}
            GET /lumina/lineitems?q&limit (search: campaign / advertiser / WO)
            GET /lumina/lineitems/:id → { lineItem, fetchedAt } — full order-form doc
            GET /lumina/advertisers?q&limit · GET /lumina/advertisers/:id (legacy cards)
+Auth       GET /auth/config → {ssoEnabled} (public) · GET /auth/login → {url} (public)
+           GET /auth/callback?code= (public; always REDIRECTS, never JSON — the browser
+             is mid-navigation, so failures come back as /login?error=)
+           GET /auth/me → {user, ssoEnabled}
 Health     GET /health  (no auth)
 ```
 
@@ -215,38 +221,87 @@ isArchived, isCompleted (also stamps completedAt), tags.
 
 ---
 
-## Auth (current: STUB)
+## Auth (Microsoft SSO / Entra ID)
 
-`server/middleware/auth.js` attaches a hardcoded `DEV_USER` (admin) to `req.user` on
-every request — there is no real login yet. `requireAdmin` checks `req.user.role`.
-Replace this file with MSAL token verification when SSO is built (see Planned).
+**Server-side auth-code flow, stateless session.** The browser never sees the client
+secret — it only calls our own `/api/auth/*`, which does the code exchange with Entra
+and mints a signed JWT. That token IS the session: Vercel functions (and k8s pods behind
+a load balancer) share no session store, so anything server-side would need one.
 
-**TEMPORARY shared-password gate (remove when MSAL SSO lands).** So we can demo with
-real, sensitive imported data before SSO exists, `requireAuth` enforces a single shared
-password when the `ACCESS_PASSWORD` env var is set: every `/api` request must send it as
-`x-access-password` (or `Authorization: Bearer <pw>`), else `401`. If `ACCESS_PASSWORD`
-is unset (local dev), the gate is disabled and the app opens freely. Everyone still
-shares `DEV_USER`. Frontend: `AccessGate` (wraps the app in `App.jsx`) hits
-`GET /api/auth/check` — 200 opens the app, 401 shows a lock screen; the password is
-stored in localStorage and sent by the axios request interceptor (`api/client.js`). Set
-`ACCESS_PASSWORD` in Vercel for the preview. All the temporary pieces are marked
-`TODO(auth)` / "TEMPORARY".
+Flow: SPA `GET /api/auth/login` → Microsoft sign-in → Entra redirects the **browser** to
+`/api/auth/callback?code=` → `acquireTokenByCode` → upsert the user → redirect to
+`/login/callback?token=<jwt>` → the SPA stores it and sends `Authorization: Bearer <jwt>`
+on every request.
 
-**Lock (the stand-in for log out).** The sidebar's user area has a lock button →
-`lockApp()` in `api/client.js`: it clears the stored password and hard-navigates to `/`,
-so the gate re-locks AND nothing survives in memory (board cache, open card, cached
-settings) for whoever uses the machine next. A confirm dialog spells out that the
-password is shared, so locking doesn't sign anyone else out. There is no server session
-to end — the password is the whole gate. Becomes a real sign-out with MSAL SSO.
+- **The JWT carries identity only; role is re-read from Mongo on every request**
+  (`requireAuth`). So promoting/deactivating someone in Admin → Users takes effect on
+  their next click, not when their 5-day token expires. `requireAdmin` reads that fresh
+  role. A deactivated user gets `403` and cannot sign in.
+- **Users are matched to the Asana import by email, case-insensitively.** The migration
+  already created `users` from card and subtask assignees, so a buyer's first sign-in
+  attaches to their existing record and keeps every card assignment. Entra returns the
+  UPN in whatever case it was typed, hence the case-insensitive lookup — an exact match
+  would silently create a duplicate user and orphan their cards.
+  `microsoftId` is only written when Entra actually returns one: the index is
+  `unique + sparse`, and sparse skips **missing** keys, not `null` ones — writing `null`
+  for a second user would collide on E11000.
+- **Roles:** new users join as `member`; emails in `ADMIN_EMAILS` are promoted to `admin`
+  on every sign-in (so the list, not the DB, is the source of truth for who administers).
+  Without at least one entry nobody can create/delete boards, manage users, delete cards
+  or comments, or set a board's Lumina fields.
+- `ALLOWED_EMAIL_DOMAINS` restricts sign-in to Townsquare domains; blank = any account in
+  the tenant.
+- **Redirect URI is derived from the request host** (`<origin>/api/auth/callback`), so one
+  build serves localhost, Vercel previews and the eventual k8s hostname — each just has to
+  be registered in the Entra app. `PUBLIC_PROTO=https` pins the scheme where TLS terminates
+  upstream (k8s ingress → pod is plain HTTP, so the URL would otherwise be built as
+  `http://` and fail Entra's exact match). `MSAL_REDIRECT_URI` pins the whole thing.
+- **Local dev needs no Entra setup:** with `MSAL_CLIENT_ID`/`SECRET` unset, `requireAuth`
+  falls back to the hardcoded `DEV_USER` (admin) — but **only outside production**. In
+  production an unset var returns `503`, never an open app: this database holds real buyer
+  data, and the old shared-password gate's "unset = open" behavior is exactly the footgun
+  worth not repeating.
+- **Sign out (sidebar) ends OUR session only** — it clears the token and hard-navigates to
+  `/login`, so nothing (board cache, open card, cached settings) survives for whoever uses
+  the machine next. It deliberately does **not** end the Microsoft session, so signing back
+  in is one click (standard SSO logout, same call as Aura Studio). There is no server-side
+  session to revoke.
+- A `401` from any call clears the token and raises an `auth:expired` window event;
+  `AuthContext` catches it and `AuthWall` routes to `/login`. Deliberately not a hard
+  redirect from the axios interceptor — that fights the router and loops on the very
+  request that checks whether we're signed in.
 
----
+**Removed with SSO (2026-09-12):** the temporary shared-password gate — `ACCESS_PASSWORD`,
+`AccessGate`, `lockApp()`, `GET /api/auth/check`.
 
 ## Environment Variables
 
 `.env` locally (gitignored), Vercel project settings in prod. See `.env.example`.
 
+**Local dev uses the shared devbox Mongo, not Atlas:**
+`MONGODB_URI=mongodb://192.168.1.153:27017/ignite-buyer-board-dev` (no auth, no TLS —
+see `~/.aura/knowledge/infrastructure/devbox-db-stack.md`). `connectDb` enables TLS only
+for `mongodb+srv://` URIs, because Atlas requires it and a plain local Mongo rejects it —
+it used to be hardcoded on, which made any local DB unusable.
+
 ```
-MONGODB_URI=                 # Atlas connection string (required)
+MONGODB_URI=                 # Atlas in prod; devbox mongo:// locally (required)
+# Microsoft SSO (Entra ID). SECRET IS SERVER-ONLY. Unset CLIENT_ID/SECRET = dev-user
+#   fallback outside production; in production it's a 503, never an open app.
+MSAL_CLIENT_ID=
+MSAL_CLIENT_SECRET=
+MSAL_TENANT_ID=              # a473edd8-... (Townsquare tenant)
+MSAL_REDIRECT_URI=           # optional — normally derived from the request host.
+                             #   REQUIRED in local dev: Vite's proxy rewrites Host to the
+                             #   API's own port, so the derived URI is :3011 while the
+                             #   browser (and the registered Entra URI) is :5173 →
+                             #   AADSTS50011. Pin it to http://localhost:5173/api/auth/callback
+MSAL_SCOPES=                 # optional, comma-separated. Default: user.read
+ALLOWED_EMAIL_DOMAINS=       # comma-separated; blank = any account in the tenant
+ADMIN_EMAILS=                # comma-separated; promoted to admin on sign-in
+PUBLIC_PROTO=                # 'https' when TLS terminates upstream (k8s ingress)
+JWT_SECRET=                  # signs our session token; rotating it signs everyone out
+JWT_TTL_SECONDS=             # optional, default 5 days
 DNS_SERVERS=                 # optional, e.g. 1.1.1.1,8.8.8.8 — fixes querySrv ECONNREFUSED
                              #   on flaky local networks (hotspot/VPN). Blank in prod.
 # AWS S3 (file/image uploads)
@@ -291,6 +346,8 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 ## Frontend
 
 ### Pages / routes
+- `/login`, `/login/callback` → the only PUBLIC routes (signing in can't require being
+  signed in). Everything else is wrapped in `AuthWall`.
 - `/` → redirect to last-viewed board (localStorage) or `/dashboard`
 - `/dashboard` → home: greeting + Projects (boards) + People (users) widgets. **Board
   management lives here**: "New board" (dialog → seeds default columns → opens it), and a
@@ -341,6 +398,11 @@ container uses `alignItems:'stretch'` + `overflowY:'hidden'` so only the inner c
 lists scroll, never the page (mirrors Asana).
 
 ### Key components
+- **AuthContext / AuthWall** (`context/`, `components/common/`) — identity comes from
+  `GET /auth/me`, **not** from decoding the JWT: role and deactivation are re-read
+  server-side, so only the server's answer can't be stale (or edited in localStorage).
+  `AuthWall` renders a spinner while `status === 'checking'` rather than redirecting, or a
+  signed-in user would flash the login screen on every load.
 - **BoardCard / CardFace / ArchivedCard** — board cards. `CardFace` is the shared
   visual; `BoardCard` adds dnd-kit `useSortable`; `ArchivedCard` is read-only & NOT
   sortable (so large archives render fast). Cards show: tag glyphs (colored `Sell`
@@ -1023,7 +1085,16 @@ hold inline files, clean them with `s3UrlsInHtml`, not just `attachments[]`.
 
 ---
 
-## Deployment (Vercel)
+## Deployment (Vercel today; k8s planned)
+
+Planned: a separate `ignite-buyer-board-deploy` repo holding the k8s manifests, following
+the house layout (`kube/<release>/` + `kube/production/`, configMap + secret + ingress +
+svc, `bin/deploy.sh`) used by `lumina-deploy` and `adcreator-deploy`. Nothing in the app
+assumes Vercel: the SSO redirect URI is derived from the request host and `PUBLIC_PROTO`
+covers ingress TLS termination, so moving hosts is an env-var + Entra-redirect-URI change,
+not a code change.
+
+### Vercel
 
 - `vercel.json`: `buildCommand` builds the client → `outputDirectory: client/dist`;
   rewrites `/api/(.*)` → `/api` (the serverless function `api/index.js` = the Express
@@ -1047,8 +1118,9 @@ node scripts/screenshot.mjs "/boards/<id>?view=calendar" out.png 1500 1000
 ```
 
 Drives the installed Edge/Chrome over CDP with Node's built-in `WebSocket` — **no
-Playwright, no browser download, no new dependencies**. It seeds `ACCESS_PASSWORD` into
-localStorage first, or every page is the lock screen.
+Playwright, no browser download, no new dependencies**. With MSAL unset locally the
+server hands back the dev user, so no session is needed; set `SHOT_TOKEN=<jwt>` to shoot
+a server that has SSO configured, or every page is the login screen.
 
 - `SHOT_WAIT_FOR="<js expr>"` — poll until it's truthy before shooting. **Use it.** A
   fixed sleep once had me "verify" an empty, still-loading calendar and conclude the
@@ -1071,9 +1143,12 @@ All route handlers try/catch → central error middleware; error shape
 
 ## Planned / Not Yet Built
 
-- **Microsoft SSO (MSAL):** replace the auth stub; create users on first login; load
-  user theme. Until then everyone is the admin `DEV_USER`.
-- **Owner-only edit permissions** (cards/comments editable only by owner) — waits on real auth.
+- **Microsoft SSO (MSAL) is BUILT** (2026-09-12) — see *Auth*. Still open: loading a user's
+  saved theme at sign-in, and per-buyer Lumina identity (`LUMINA_COMMENTS_USER` is still a
+  single shared account — now that each buyer has a real email, `X-On-Behalf-Of-User` could
+  carry it once their Lumina usernames are confirmed; see *Lumina > Comments push*).
+- **Owner-only edit permissions** (cards/comments editable only by owner) — now unblocked
+  by real auth; not built.
 - **User profile photos** — come with SSO; show photo, fall back to colored initials.
 - **Rich text editing is BUILT** (TipTap): rich comment composer + comment editing,
   rich description editing (images preserved), and add/remove attachments in the
