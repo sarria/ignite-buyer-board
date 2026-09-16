@@ -4,7 +4,6 @@ import {
   Box, Typography, Tooltip, Avatar, Divider, CircularProgress, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
 } from '@mui/material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import HomeIcon from '@mui/icons-material/Home';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -137,15 +136,15 @@ export default function Sidebar() {
         <Box sx={{ px: collapsed ? 0 : 2.5, py: 2.5, display: 'flex', alignItems: 'center', gap: 1.25, justifyContent: collapsed ? 'center' : 'flex-start' }}>
           <Tooltip title={collapsed ? 'Expand sidebar' : ''} placement="right" disableHoverListener={!collapsed}>
             <Box
+              component="img"
+              src="/favicon.svg"
+              alt="Ignite Buyer Board"
               onClick={collapsed ? toggleCollapsed : undefined}
               sx={{
-                width: 28, height: 28, borderRadius: 1,
-                bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, cursor: collapsed ? 'pointer' : 'default',
+                width: 28, height: 27, flexShrink: 0,
+                cursor: collapsed ? 'pointer' : 'default',
               }}
-            >
-              <DashboardIcon sx={{ fontSize: 16, color: '#fff' }} />
-            </Box>
+            />
           </Tooltip>
           {!collapsed && (
             <>

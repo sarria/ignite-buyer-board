@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Box, Paper, Typography, Button, CircularProgress, Alert } from '@mui/material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
 import { getAuthConfig, getLoginUrl } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
@@ -33,9 +32,8 @@ export default function LoginPage() {
   return (
     <Box sx={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', p: 2 }}>
       <Paper variant="outlined" sx={{ width: '100%', maxWidth: 380, borderRadius: 3, p: 4, textAlign: 'center' }}>
-        <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
-          <DashboardIcon sx={{ color: '#fff' }} />
-        </Box>
+        <Box component="img" src="/favicon.svg" alt="Ignite Buyer Board"
+          sx={{ width: 48, height: 46, display: 'block', mx: 'auto', mb: 2 }} />
         <Typography variant="h6" fontWeight={700} gutterBottom>Ignite Buyer Board</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           Sign in with your Townsquare account to continue.
