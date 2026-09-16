@@ -27,6 +27,10 @@ const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...ar
 const fs = require('fs');
 const path = require('path');
 const { S3Client, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+// Same publicUrl() the running app and rewrite-s3-urls.js use, so a fresh import
+// writes the private-bucket proxy path directly instead of the raw bucket host
+// (which the cutover on 2026-09-16 stopped serving reads through).
+const { publicUrl } = require('../server/lib/s3');
 
 const ASANA_PAT = process.env.ASANA_PAT || 'PASTE_YOUR_TOKEN_HERE';
 const BASE_URL = 'https://app.asana.com/api/1.0';
@@ -55,8 +59,9 @@ let PROJECT_NAME = `project ${PROJECT_GID}`;
 // Delay between API calls to avoid rate limiting (ms)
 const RATE_LIMIT_DELAY = Number(process.env.RATE_LIMIT_MS) || 150;
 
-// S3 for migrated image attachments. Public bucket for now (see memory:
-// s3-image-storage-plan — move to a private bucket later).
+// S3 for migrated image attachments. Reads go through the private-bucket proxy
+// (server/lib/s3.js publicUrl()) — uploads here still go straight to S3 via the
+// AWS SDK (this is a trusted migration script, not the browser upload path).
 const S3_BUCKET = process.env.S3_BUCKET;
 const S3_REGION = process.env.AWS_REGION;
 const S3_PREFIX = process.env.S3_PREFIX || 'buyer-board/';
@@ -100,7 +105,7 @@ async function uploadAttachmentToS3(att, taskGid) {
   const ext = (att.name.split('.').pop() || '').toLowerCase();
   const safeName = att.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
   const key = `${S3_PREFIX}${taskGid}/${att.gid}-${safeName}`;
-  const url = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
+  const url = publicUrl(key);
 
   // Already in the bucket? Skip the expensive download + upload.
   // HeadObject succeeds (200) only when the object exists. Any error — 404, or a
