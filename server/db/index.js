@@ -60,6 +60,9 @@ async function createIndexes(db) {
 
   // comments
   await db.collection('comments').createIndex({ cardId: 1, createdAt: 1 });
+
+  // saved_filters
+  await db.collection('saved_filters').createIndex({ boardId: 1, userId: 1 });
 }
 
 module.exports = { connectDb, getDb, closeDb };

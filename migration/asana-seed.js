@@ -304,7 +304,10 @@ async function main() {
       { email: person.email },
       {
         $set: { name: person.name, email: person.email },
-        $setOnInsert: { role: 'member', createdAt: new Date() },
+        // Default new users to admin (2026-09-15): at go-live nobody should be
+        // blocked mid-migration by a permission they don't yet know exists.
+        // Buyers/leads decide who gets demoted to member afterward, in Admin > Users.
+        $setOnInsert: { role: 'admin', createdAt: new Date() },
       },
       { upsert: true, returnDocument: 'after' }
     );

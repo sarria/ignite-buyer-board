@@ -1,15 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Paper, Avatar, IconButton, Button, TextField,
   Select, MenuItem, FormControl, Tooltip, Chip, Dialog, DialogTitle,
   DialogContent, DialogActions, CircularProgress, Divider, InputBase,
+  InputAdornment, Alert, Snackbar,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import SearchIcon from '@mui/icons-material/Search';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import CallMergeIcon from '@mui/icons-material/CallMerge';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleAltOutlined';
-import { getUsers, createUser, updateUser, deleteUser } from '../api/users';
+import { getUsers, createUser, updateUser, deleteUser, mergeUser } from '../api/users';
 import { userColor } from '../utils/userColor';
+
+const SORT_OPTIONS = [
+  { value: 'name', label: 'Name (A-Z)' },
+  { value: 'email', label: 'Email (A-Z)' },
+  { value: 'recent', label: 'Recently active' },
+];
+
+function sortUsers(list, sortBy) {
+  const sorted = [...list];
+  if (sortBy === 'email') sorted.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+  else if (sortBy === 'recent') {
+    sorted.sort((a, b) => new Date(b.lastLoginAt || 0) - new Date(a.lastLoginAt || 0));
+  } else {
+    sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }
+  return sorted;
+}
 
 const initials = (name = '') =>
   name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?';
@@ -62,7 +82,7 @@ function EditableName({ value, onSave }) {
   );
 }
 
-function UserRow({ user, divider, onUpdate, onDeactivate, onReactivate }) {
+function UserRow({ user, divider, onUpdate, onDeactivate, onReactivate, onMerge }) {
   const deactivated = !!user.deactivated;
   return (
     <Box>
@@ -120,7 +140,12 @@ function UserRow({ user, divider, onUpdate, onDeactivate, onReactivate }) {
         )}
 
         {/* Actions */}
-        <Box className="row-actions" sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.15s', width: 36, textAlign: 'right' }}>
+        <Box className="row-actions" sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.15s', display: 'flex' }}>
+          <Tooltip title="Merge into another user (reassign their cards, comments, etc.)">
+            <IconButton size="small" onClick={() => onMerge(user)}>
+              <CallMergeIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           {deactivated ? (
             <Tooltip title="Reactivate user">
               <IconButton size="small" onClick={() => onReactivate(user)}>
@@ -146,20 +171,37 @@ export default function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState('member');
+  const [newRole, setNewRole] = useState('admin'); // go-live default; see server/controllers/users.js
   const [saving, setSaving] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState(null);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [mergeTarget, setMergeTarget] = useState(null); // the user being merged AWAY
+  const [mergeIntoId, setMergeIntoId] = useState('');
+  const [mergeConfirmText, setMergeConfirmText] = useState('');
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     getUsers().then(data => setUsers(data)).finally(() => setLoading(false));
   }, []);
+
+  // Reset the typed confirmation whenever a new merge target opens (or the dialog
+  // closes) — selecting a target from the dropdown must never be enough on its own
+  // to arm this, since it's an irreversible delete.
+  useEffect(() => {
+    setMergeIntoId('');
+    setMergeConfirmText('');
+    setMergeError('');
+  }, [mergeTarget]);
 
   const handleCreate = async () => {
     if (!newName.trim() || !newEmail.trim()) return;
     setSaving(true);
     const created = await createUser({ name: newName.trim(), email: newEmail.trim(), role: newRole });
     setUsers(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-    setNewName(''); setNewEmail(''); setNewRole('member');
+    setNewName(''); setNewEmail(''); setNewRole('admin');
     setCreateOpen(false);
     setSaving(false);
   };
@@ -179,8 +221,32 @@ export default function AdminUsersPage() {
     await handleUpdate(user._id, { deactivated: false });
   };
 
-  const active = users.filter(u => !u.deactivated);
-  const deactivated = users.filter(u => u.deactivated);
+  const handleMerge = async () => {
+    if (!mergeIntoId || merging) return;
+    setMerging(true);
+    setMergeError('');
+    try {
+      const result = await mergeUser(mergeTarget._id, mergeIntoId);
+      setUsers(prev => prev.filter(u => u._id !== mergeTarget._id));
+      const reassignedTotal = Object.values(result.reassigned || {}).reduce((a, b) => a + b, 0);
+      setToast(`Merged ${result.merged} into ${result.into} — ${reassignedTotal} record${reassignedTotal === 1 ? '' : 's'} reassigned.`);
+      setMergeTarget(null);
+    } catch (e) {
+      setMergeError(e.response?.data?.error?.message || 'Could not merge these users.');
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const q = search.trim().toLowerCase();
+  const matchesSearch = (u) => !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+  const filtered = users.filter(matchesSearch);
+  const active = sortUsers(filtered.filter(u => !u.deactivated), sortBy);
+  const deactivated = sortUsers(filtered.filter(u => u.deactivated), sortBy);
+  const mergeCandidates = useMemo(
+    () => users.filter(u => u._id !== mergeTarget?._id).sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [users, mergeTarget]
+  );
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
@@ -199,6 +265,23 @@ export default function AdminUsersPage() {
           </Button>
         </Box>
 
+        {/* Search + sort */}
+        <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
+          <TextField
+            size="small"
+            placeholder="Search by name or email"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{ flex: 1 }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          />
+          <FormControl size="small" sx={{ minWidth: 170 }}>
+            <Select value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              {SORT_OPTIONS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </Box>
+
         {/* Active users */}
         <Paper variant="outlined" sx={{ borderRadius: 3, p: 1.5, mb: 4 }}>
           {active.length === 0 ? (
@@ -214,6 +297,7 @@ export default function AdminUsersPage() {
                 onUpdate={handleUpdate}
                 onDeactivate={setDeactivateTarget}
                 onReactivate={handleReactivate}
+                onMerge={setMergeTarget}
               />
             ))
           )}
@@ -234,6 +318,7 @@ export default function AdminUsersPage() {
                   onUpdate={handleUpdate}
                   onDeactivate={setDeactivateTarget}
                   onReactivate={handleReactivate}
+                  onMerge={setMergeTarget}
                 />
               ))}
             </Paper>
@@ -300,6 +385,58 @@ export default function AdminUsersPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Merge dialog — reassigns cards/subtasks/comments/boards/templates from
+          mergeTarget into the chosen user, then deletes mergeTarget. */}
+      <Dialog open={!!mergeTarget} onClose={() => !merging && setMergeTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Merge user</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+          {mergeError && <Alert severity="error">{mergeError}</Alert>}
+          <Typography variant="body2">
+            Every card, subtask, comment, board and template assigned to{' '}
+            <strong>{mergeTarget?.name}</strong> ({mergeTarget?.email}) will be reassigned to
+            the user below, then <strong>{mergeTarget?.name}</strong> will be deleted. This is
+            typically needed when a buyer's Microsoft sign-in email doesn't match the email
+            their Asana-imported data uses, leaving two separate records.
+          </Typography>
+          <FormControl size="small" fullWidth>
+            <Select
+              displayEmpty
+              value={mergeIntoId}
+              onChange={e => setMergeIntoId(e.target.value)}
+            >
+              <MenuItem value="" disabled>Merge into…</MenuItem>
+              {mergeCandidates.map(u => (
+                <MenuItem key={u._id} value={u._id}>{u.name} ({u.email})</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {mergeIntoId && (
+            <TextField
+              size="small"
+              fullWidth
+              autoFocus
+              label={`Type "${mergeTarget?.email}" to confirm`}
+              value={mergeConfirmText}
+              onChange={e => setMergeConfirmText(e.target.value)}
+              helperText="This permanently deletes that user and cannot be undone."
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setMergeTarget(null)} disabled={merging} sx={{ color: 'text.secondary' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleMerge}
+            disabled={merging || !mergeIntoId || mergeConfirmText.trim().toLowerCase() !== mergeTarget?.email?.toLowerCase()}
+          >
+            {merging ? <CircularProgress size={22} color="inherit" /> : 'Merge'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast('')} message={toast} />
     </Box>
   );
 }

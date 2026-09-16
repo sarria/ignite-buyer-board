@@ -8,6 +8,7 @@ const fieldCtrl = require('../controllers/fields');
 const cardCtrl = require('../controllers/cards');
 const templateCtrl = require('../controllers/templates');
 const settingsCtrl = require('../controllers/settings');
+const savedFilterCtrl = require('../controllers/savedFilters');
 
 const router = Router();
 
@@ -35,6 +36,10 @@ router.get('/:id/card-counts', cardCtrl.listCardCounts);
 router.get('/:id/templates', templateCtrl.listTemplates);
 router.post('/:id/templates', templateCtrl.createTemplate);
 router.put('/:id/templates/reorder', templateCtrl.reorderTemplates);
+
+// Saved filter presets — the caller's own, on this board
+router.get('/:id/saved-filters', savedFilterCtrl.listSavedFilters);
+router.post('/:id/saved-filters', savedFilterCtrl.createSavedFilter);
 
 // Lumina field selection for this board (absent = show everything)
 router.get('/:id/lumina-fields', settingsCtrl.getBoardLuminaFields);

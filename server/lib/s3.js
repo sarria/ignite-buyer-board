@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const REGION = process.env.AWS_REGION;
@@ -11,8 +11,35 @@ const PREFIX = process.env.S3_PREFIX || 'buyer-board/';
 const s3Enabled = Boolean(REGION && BUCKET);
 const s3 = s3Enabled ? new S3Client({ region: REGION }) : null;
 
+// A private-bucket read proxy exists (server/controllers/files.js, GET /api/files/<key>)
+// but is NOT wired in as the default yet — see the big warning below. `publicUrl()`
+// still returns the raw bucket URL, exactly as before, because the bucket itself is
+// still public and this is what actually works today.
+//
+// **DO NOT flip `publicUrl()` to PROXY_BASE without fixing this first:** the proxy
+// sits behind `requireAuth`, which only reads the `Authorization: Bearer` header our
+// axios client attaches — a plain `<img src>`/`<a href>` is fetched natively by the
+// browser with NO custom header, so it 401s. This was tried on 2026-09-15 and broke
+// every image on the board within minutes (reverted same day). Before retrying: add
+// a way for the proxy to authenticate a plain resource request — e.g. accept a
+// `?token=<jwt>` query param on this one route AND have every render path
+// (RichContent, Attachments, RichEditor's own preview) append the current token when
+// building the URL — then flip this function, deploy, run the DB rewrite, and only
+// THEN lock the bucket down in AWS. See [[s3-private-bucket-cutover]] in memory.
+const RAW_BASE = `https://${BUCKET}.s3.${REGION}.amazonaws.com/`;
+const PROXY_BASE = '/api/files/';
+
 function publicUrl(key) {
-  return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+  return `${RAW_BASE}${key}`;
+}
+
+// The literal S3 key from either URL form we've ever stored. Null for anything else
+// (an external link, e.g.) so callers can filter safely.
+function keyFromUrl(url) {
+  if (!url) return null;
+  if (url.startsWith(RAW_BASE)) return url.slice(RAW_BASE.length);
+  if (url.startsWith(PROXY_BASE)) return url.slice(PROXY_BASE.length);
+  return null;
 }
 
 // Presigned PUT so the browser can upload directly to S3 (avoids Vercel's
@@ -28,21 +55,27 @@ async function presignUpload(filename, contentType) {
   return { uploadUrl, publicUrl: publicUrl(key), key };
 }
 
-// Delete an object given its public URL (only ours; ignores anything else).
+// Presigned GET for the read-through proxy (server/controllers/files.js). Short TTL —
+// it's fetched fresh on every page load, never stored, so there's nothing to rotate.
+async function presignRead(key, expiresIn = 300) {
+  return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn });
+}
+
+// Delete an object given either URL form we've stored (only ours; ignores anything else).
 async function deleteByUrl(url) {
-  const base = `https://${BUCKET}.s3.${REGION}.amazonaws.com/`;
-  if (!url || !url.startsWith(base)) return false;
-  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: url.slice(base.length) }));
+  const key = keyFromUrl(url);
+  if (!key) return false;
+  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
   return true;
 }
 
 // Find every one of OUR S3 URLs inside a blob of text/HTML (e.g. inline <img src>
 // in a comment/description). Used so deleting content also removes its files.
+// Matches both the pre-rewrite raw host and the current proxy path.
 function s3UrlsInHtml(html) {
   if (!html) return [];
-  const base = `https://${BUCKET}.s3.${REGION}.amazonaws.com/`;
-  const matches = String(html).match(/https?:\/\/[^\s"'<>()]+/g) || [];
-  return matches.filter(u => u.startsWith(base));
+  const matches = String(html).match(/(?:https?:\/\/[^\s"'<>()]+|\/api\/files\/[^\s"'<>()]+)/g) || [];
+  return matches.filter(u => keyFromUrl(u) !== null);
 }
 
 // Best-effort bulk delete: dedupes, never throws (S3 cleanup must not block a DB
@@ -52,4 +85,7 @@ async function deleteUrls(urls) {
   await Promise.all(unique.map(u => deleteByUrl(u).catch(() => {})));
 }
 
-module.exports = { s3Enabled, presignUpload, deleteByUrl, s3UrlsInHtml, deleteUrls, publicUrl };
+module.exports = {
+  s3Enabled, presignUpload, presignRead, deleteByUrl, s3UrlsInHtml, deleteUrls,
+  publicUrl, keyFromUrl, RAW_BASE, PROXY_BASE,
+};

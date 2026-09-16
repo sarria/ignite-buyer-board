@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, Avatar, CircularProgress, Divider, IconButton,
+  Box, Typography, Paper, CircularProgress, Divider, IconButton,
   Button, Menu, MenuItem, ListItemIcon, Tooltip, Collapse,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert,
 } from '@mui/material';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
-import PeopleOutlineIcon from '@mui/icons-material/PeopleAltOutlined';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import EditIcon from '@mui/icons-material/Edit';
@@ -16,8 +16,8 @@ import DeleteOutlineIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { getBoards, createBoard, updateBoard, deleteBoard } from '../api/boards';
-import { getUsers } from '../api/users';
-import { userColor } from '../utils/userColor';
+import { useAuth } from '../context/AuthContext';
+import { getRecentBoardIds } from '../utils/recentBoards';
 
 // Asana-style coral/teal/purple palette for project icons, picked deterministically by name.
 const BOARD_COLORS = ['#00897b', '#4573d2', '#5da283', '#aa62e3', '#e8a33d', '#3aa9bd', '#d35a8c'];
@@ -34,9 +34,6 @@ const greeting = () => {
   return 'Good evening';
 };
 
-const initials = (name = '') =>
-  name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?';
-
 const notifyBoardsChanged = () => window.dispatchEvent(new CustomEvent('boards:changed'));
 
 function WidgetCard({ icon, title, action, children }) {
@@ -52,7 +49,7 @@ function WidgetCard({ icon, title, action, children }) {
   );
 }
 
-function BoardRow({ board, onOpen, onMenu, dimmed }) {
+function BoardRow({ board, onOpen, onMenu, dimmed, canManage, subtitle }) {
   return (
     <Box
       onClick={() => onOpen(board)}
@@ -71,27 +68,48 @@ function BoardRow({ board, onOpen, onMenu, dimmed }) {
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography variant="body2" fontWeight={600} noWrap>{board.name}</Typography>
         <Typography variant="caption" color="text.secondary">
-          {board.columnCount ?? 0} column{board.columnCount === 1 ? '' : 's'}
-          {board.cardCount ? ` · ${board.cardCount} card${board.cardCount === 1 ? '' : 's'}` : ''}
+          {subtitle ?? `${board.columnCount ?? 0} column${board.columnCount === 1 ? '' : 's'}${board.cardCount ? ` · ${board.cardCount} card${board.cardCount === 1 ? '' : 's'}` : ''}`}
         </Typography>
       </Box>
-      <IconButton
-        className="board-menu-btn"
-        size="small"
-        onClick={(e) => { e.stopPropagation(); onMenu(e.currentTarget, board); }}
-        sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.15s' }}
-      >
-        <MoreHorizIcon fontSize="small" />
-      </IconButton>
+      {canManage && (
+        <IconButton
+          className="board-menu-btn"
+          size="small"
+          onClick={(e) => { e.stopPropagation(); onMenu(e.currentTarget, board); }}
+          sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.15s' }}
+        >
+          <MoreHorizIcon fontSize="small" />
+        </IconButton>
+      )}
+    </Box>
+  );
+}
+
+function MyBoardsSection({ title, boards, onOpen, subtitle, empty, last }) {
+  return (
+    <Box sx={{ mb: last ? 0 : 2 }}>
+      <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {title}
+      </Typography>
+      {boards.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: last ? 0 : 1 }}>{empty}</Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+          {boards.map(b => (
+            <BoardRow key={b._id} board={b} onOpen={onOpen} subtitle={subtitle?.(b)} />
+          ))}
+        </Box>
+      )}
+      {!last && <Divider sx={{ mt: 1.5 }} />}
     </Box>
   );
 }
 
 export default function BoardListPage() {
   const [boards, setBoards] = useState([]);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
 
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [menuBoard, setMenuBoard] = useState(null);
@@ -106,9 +124,7 @@ export default function BoardListPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([getBoards().catch(() => []), getUsers().catch(() => [])])
-      .then(([boardData, userData]) => { setBoards(boardData); setUsers(userData); })
-      .finally(() => setLoading(false));
+    getBoards().catch(() => []).then(setBoards).finally(() => setLoading(false));
   }, []);
 
   const openMenu = (anchor, board) => { setMenuAnchor(anchor); setMenuBoard(board); };
@@ -167,25 +183,48 @@ export default function BoardListPage() {
 
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
+  // "My Boards" — three ways a board can be "yours" even though every board is
+  // visible to everyone (see CLAUDE.md: no per-board access control).
+  const assignedBoards = active.filter(b => (b.myCardCount ?? 0) > 0);
+  const createdBoards = active.filter(b => user?._id && String(b.createdBy) === String(user._id));
+  const recentBoardIds = getRecentBoardIds();
+  const recentBoards = recentBoardIds
+    .map(id => active.find(b => String(b._id) === id))
+    .filter(Boolean);
+
   return (
     <Box sx={{ flex: 1, overflowY: 'auto', bgcolor: 'background.default' }}>
       <Box sx={{ maxWidth: 1000, mx: 'auto', px: 3, py: 5 }}>
         {/* Greeting header */}
         <Box sx={{ textAlign: 'center', mb: 5 }}>
           <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, mb: 0.5 }}>{today}</Typography>
-          <Typography variant="h4" fontWeight={500}>{greeting()}, Dev User</Typography>
+          <Typography variant="h4" fontWeight={500}>{greeting()}, {user?.name || 'there'}</Typography>
         </Box>
 
         {/* Widgets */}
         <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* My Boards — three views onto "boards that matter to me", since every
+              board is visible to everyone and there's no per-board membership. */}
+          <WidgetCard icon={<PersonOutlineIcon sx={{ color: 'text.secondary' }} />} title="My Boards">
+            <MyBoardsSection title="Assigned to me" boards={assignedBoards} onOpen={(x) => navigate(`/boards/${x._id}`)}
+              subtitle={b => `${b.myCardCount} card${b.myCardCount === 1 ? '' : 's'} assigned to you`}
+              empty="No cards assigned to you yet." />
+            <MyBoardsSection title="Recently viewed" boards={recentBoards} onOpen={(x) => navigate(`/boards/${x._id}`)}
+              empty="Boards you open will show up here." />
+            <MyBoardsSection title="Created by me" boards={createdBoards} onOpen={(x) => navigate(`/boards/${x._id}`)}
+              empty="You haven't created a board yet." last />
+          </WidgetCard>
+
           {/* Projects (Boards) */}
           <WidgetCard
             icon={<ViewKanbanOutlinedIcon sx={{ color: 'text.secondary' }} />}
             title="Projects"
             action={
-              <Button size="small" startIcon={<AddIcon />} onClick={() => { setNewName(''); setCreateOpen(true); }}>
-                New board
-              </Button>
+              isAdmin && (
+                <Button size="small" startIcon={<AddIcon />} onClick={() => { setNewName(''); setCreateOpen(true); }}>
+                  New board
+                </Button>
+              )
             }
           >
             {active.length === 0 ? (
@@ -193,7 +232,7 @@ export default function BoardListPage() {
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                 {active.map(b => (
-                  <BoardRow key={b._id} board={b} onOpen={(x) => navigate(`/boards/${x._id}`)} onMenu={openMenu} />
+                  <BoardRow key={b._id} board={b} canManage={isAdmin} onOpen={(x) => navigate(`/boards/${x._id}`)} onMenu={openMenu} />
                 ))}
               </Box>
             )}
@@ -212,32 +251,10 @@ export default function BoardListPage() {
                 <Collapse in={showArchived}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                     {archived.map(b => (
-                      <BoardRow key={b._id} board={b} dimmed onOpen={(x) => navigate(`/boards/${x._id}`)} onMenu={openMenu} />
+                      <BoardRow key={b._id} board={b} dimmed canManage={isAdmin} onOpen={(x) => navigate(`/boards/${x._id}`)} onMenu={openMenu} />
                     ))}
                   </Box>
                 </Collapse>
-              </Box>
-            )}
-          </WidgetCard>
-
-          {/* People (Users) */}
-          <WidgetCard icon={<PeopleOutlineIcon sx={{ color: 'text.secondary' }} />} title="People">
-            {users.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No people yet.</Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                {users.map((u, i) => (
-                  <Box key={u._id}>
-                    {i > 0 && <Divider />}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.25 }}>
-                      <Avatar sx={{ width: 36, height: 36, fontSize: 13, bgcolor: userColor(u) }}>{initials(u.name)}</Avatar>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>{u.name}</Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>{u.email}</Typography>
-                      </Box>
-                    </Box>
-                  </Box>
-                ))}
               </Box>
             )}
           </WidgetCard>

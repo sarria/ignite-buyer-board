@@ -10,16 +10,25 @@ const DEFAULT_COLUMNS = ['To Do', 'Doing', 'Done'];
 async function listBoards(req, res) {
   const db = await getDb();
   const boards = await db.collection('boards').find().sort({ name: 1 }).toArray();
-  const [columnCounts, cardCounts] = await Promise.all([
+  // myCardCount powers the dashboard's "Assigned to me" section — computed here
+  // rather than client-side because a buyer's assigned cards can span boards they
+  // haven't opened yet (all boards are visible to everyone, see CLAUDE.md).
+  const [columnCounts, cardCounts, myCardCounts] = await Promise.all([
     db.collection('columns').aggregate([{ $group: { _id: '$boardId', count: { $sum: 1 } } }]).toArray(),
     db.collection('cards').aggregate([{ $group: { _id: '$boardId', count: { $sum: 1 } } }]).toArray(),
+    db.collection('cards').aggregate([
+      { $match: { assigneeId: new ObjectId(req.user._id) } },
+      { $group: { _id: '$boardId', count: { $sum: 1 } } },
+    ]).toArray(),
   ]);
   const colMap = Object.fromEntries(columnCounts.map(r => [r._id.toString(), r.count]));
   const cardMap = Object.fromEntries(cardCounts.map(r => [r._id.toString(), r.count]));
+  const myCardMap = Object.fromEntries(myCardCounts.map(r => [r._id.toString(), r.count]));
   res.json(boards.map(b => ({
     ...b,
     columnCount: colMap[b._id.toString()] || 0,
     cardCount: cardMap[b._id.toString()] || 0,
+    myCardCount: myCardMap[b._id.toString()] || 0,
   })));
 }
 
@@ -112,6 +121,7 @@ async function deleteBoard(req, res) {
     db.collection('columns').deleteMany({ boardId }),
     db.collection('custom_fields').deleteMany({ boardId }),
     db.collection('card_templates').deleteMany({ boardId }),
+    db.collection('saved_filters').deleteMany({ boardId }),
   ]);
   await db.collection('boards').deleteOne({ _id: boardId });
   res.status(204).end();

@@ -101,14 +101,21 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
 `connectDb()` (so serverless invocations work without a startup hook).
 
 ### Collections
-`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates`
+`users, boards, columns, custom_fields, cards, subtasks, comments, card_templates,
+saved_filters`
 
 ### Document shapes (current)
 
 ```javascript
 // users
 { _id, name, email /*unique*/, role /*'admin'|'member'*/, microsoftId /*unique sparse;
-  only written when Entra returns one*/, defaultBoardId, deactivated, lastLoginAt, createdAt }
+  only written when Entra returns one*/, defaultBoardId, deactivated, lastLoginAt, createdAt,
+  boardPrefs: { [boardId]: { view, sortBy, sortDir, filters, completedFilter, updatedAt } } }
+  // boardPrefs is this buyer's own last-used view/sort/filter state PER BOARD, synced
+  // server-side (PUT /users/me/board-prefs/:boardId, self-service, debounced from
+  // BoardPage) so it follows them across devices — localStorage keys of the same shape
+  // are only the same-browser instant-hydration fallback. Separate from saved_filters
+  // below: this is "what I left it on," not a named reusable preset.
 
 // boards
 { _id, name, description, createdBy, createdAt, asanaProjectGid, isArchived,
@@ -158,6 +165,14 @@ Official MongoDB Node driver with a cached connection pool. `getDb()` lazily cal
 { _id, boardId, name, descriptionTemplate, defaultColumnId, defaultAssigneeId,
   dueDateOffsetDays, defaultFieldValues:[...], defaultSubtasks:[{title, dueDateOffsetDays}],
   position, createdAt }
+
+// saved_filters  (per board, per user — NOT shared with other buyers on the board)
+{ _id, boardId, userId, name, filters /*same shape as utils/cardFilters EMPTY_FILTERS*/,
+  completedFilter, createdAt }
+  // A named, reusable filter preset a buyer explicitly saves ("Save view" in the
+  // Filter popover) — distinct from users.boardPrefs above, which is the unnamed
+  // "last state" that's remembered automatically. Owner-only: no admin override on
+  // delete, since these are personal, not board configuration.
 ```
 
 ### Indexes (created on startup, in `server/db/index.js`)
@@ -168,6 +183,7 @@ custom_fields {boardId, position}
 cards {boardId}; {columnId, position}; {assigneeId}; {asanaGid} sparse; {title: 'text'}
 subtasks {cardId, position}
 comments {cardId, createdAt}
+saved_filters {boardId, userId}
 ```
 
 ---
@@ -177,7 +193,8 @@ comments {cardId, createdAt}
 All under `/api`, behind auth middleware (stub). `requireAdmin` where noted.
 
 ```
-Boards     GET /boards (each w/ columnCount + cardCount) · GET /boards/:id (board+columns+fields)
+Boards     GET /boards (each w/ columnCount + cardCount + myCardCount, cards assigned to
+             the caller) · GET /boards/:id (board+columns+fields)
            POST(admin) (seeds default To Do/Doing/Done columns) · PUT(admin) {name,description,isArchived}
            DELETE(admin) — cascades ALL children (cards, subtasks, comments, columns, fields, templates
              + best-effort S3 attachment cleanup); 409 if the board has cards and isn't archived yet
@@ -199,11 +216,14 @@ Subtasks   POST /cards/:id/subtasks · PUT /cards/:id/subtasks/reorder · DELETE
            POST /subtasks/:id/attachments {name,url,isImage} · DELETE (also deletes from S3)
 Comments   GET/POST /cards/:id/comments {body, bodyHtml, pushToLumina?} · PUT /comments/:id · DELETE(admin) /comments/:id
            GET/POST /subtasks/:id/comments — the subtask thread
-Users      GET /users · POST(admin) · PUT /users/:id · DELETE(admin)
+Users      GET /users · POST(admin) · PUT /users/:id(admin) · DELETE(admin)
+           POST /users/:id/merge(admin) {intoUserId} — reassign + delete a duplicate identity
+           PUT /users/me/board-prefs/:boardId — self-service, own record only; see *Database*
 Settings   GET /boards/:id/lumina-fields → {catalog, hiddenLineItemFields, hiddenAdvertiserFields, updatedAt}
            PUT(admin) = set this board's field selection · DELETE(admin) = back to "show all"
 Templates  GET/POST /boards/:id/templates · PUT /boards/:id/templates/reorder
            PUT /templates/:id · DELETE /templates/:id · POST /templates/:id/apply {columnId?}
+Saved filters  GET/POST /boards/:id/saved-filters (caller's own) · DELETE /saved-filters/:id (owner-only)
 Uploads    POST /uploads/presign {filename, contentType} → {uploadUrl, publicUrl, key}
 Lumina     GET /lumina/status → {configured}
            GET /lumina/lineitems?q&limit (search: campaign / advertiser / WO)
@@ -245,10 +265,18 @@ on every request.
   `microsoftId` is only written when Entra actually returns one: the index is
   `unique + sparse`, and sparse skips **missing** keys, not `null` ones — writing `null`
   for a second user would collide on E11000.
-- **Roles:** new users join as `member`; emails in `ADMIN_EMAILS` are promoted to `admin`
-  on every sign-in (so the list, not the DB, is the source of truth for who administers).
-  Without at least one entry nobody can create/delete boards, manage users, delete cards
-  or comments, or set a board's Lumina fields.
+- **Roles:** new users default to `admin` (2026-09-15, go-live decision: nobody should
+  be blocked mid-rollout by a permission they don't yet know exists — buyers/leads
+  decide who gets demoted to `member` afterward, in Admin > Users). This is every path
+  that creates a user: SSO first sign-in (`upsertUser` in `server/controllers/auth.js`),
+  the Asana migration seed (`migration/asana-seed.js`), and the manual "Add user"
+  dialog. Revisit once the team is past the initial rollout and `member` is the sane
+  default again. Separately, emails in `ADMIN_EMAILS` are still force-promoted to
+  `admin` on every sign-in regardless of their stored role (so the list, not the DB, is
+  the source of truth for who can never accidentally be locked out). Without at least
+  one entry — and once rollout is over and the default flips back to `member` —
+  nobody could create/delete boards, manage users, delete cards or comments, or set a
+  board's Lumina fields.
 - `ALLOWED_EMAIL_DOMAINS` restricts sign-in to Townsquare domains; blank = any account in
   the tenant.
 - **Redirect URI is derived from the request host** (`<origin>/api/auth/callback`), so one
@@ -349,13 +377,25 @@ PORT=3001  CLIENT_URL=http://localhost:5173
 - `/login`, `/login/callback` → the only PUBLIC routes (signing in can't require being
   signed in). Everything else is wrapped in `AuthWall`.
 - `/` → redirect to last-viewed board (localStorage) or `/dashboard`
-- `/dashboard` → home: greeting + Projects (boards) + People (users) widgets. **Board
+- `/dashboard` → home: greeting + Projects (all boards) + **My Boards** widgets. **Board
   management lives here**: "New board" (dialog → seeds default columns → opens it), and a
-  per-board ⋯ menu (Rename / Archive / Delete). Archived boards drop into a collapsible
-  "Archived" section (dimmed, Unarchive/Delete) and are hidden from the sidebar. Delete is
-  offered only when a board is deletable (empty OR archived); otherwise the menu item is
-  disabled with a hint to archive first. Board changes fire a `boards:changed` window event
-  the Sidebar listens for.
+  per-board ⋯ menu (Rename / Archive / Delete) — both admin-only, hidden for members
+  and for an admin previewing as one (`AuthContext`'s `isAdmin`; see *Auth > Roles*).
+  Archived boards drop into a collapsible "Archived" section (dimmed,
+  Unarchive/Delete) and are hidden from the sidebar. Delete is offered only when a board
+  is deletable (empty OR archived); otherwise the menu item is disabled with a hint to
+  archive first. Board changes fire a `boards:changed` window event the Sidebar listens
+  for. **My Boards replaced a People (all-users) widget (2026-09-15)** — a flat list of
+  every user wasn't useful, and since every board is visible to everyone (no per-board
+  access control), "mine" needed defining three ways rather than one: **Assigned to me**
+  (`GET /boards`'s `myCardCount`, a board-grouped count of cards where `assigneeId` is the
+  caller — computed server-side since assignments can span boards you've never opened),
+  **Recently viewed** (`utils/recentBoards.js`, up to 6 board ids in localStorage,
+  client-side only, pushed from `BoardPage` on every successful board load), and
+  **Created by me** (`board.createdBy` already on the doc). Each is its own list inside one
+  "My Boards" card, with its own empty-state line rather than hiding a section outright —
+  a brand-new admin who hasn't created a board yet should see "You haven't created a board
+  yet," not a widget that silently has fewer rows than expected.
 - `/boards/:id` → kanban board (`?card=<id>` deep-links straight to a card's drawer;
   `?view=calendar` opens the Calendar view).
   **Frame-first loading**: board/columns load first and render immediately (skeleton
@@ -690,6 +730,15 @@ Familiar to Asana users (board reference), but with our color rules.
   user). Both unlock with MSAL SSO; offering them now would lie.
   All filters run through `utils/cardFilters` and apply to board, calendar and archive
   grid alike (archive ignores completion).
+  **Saved views (2026-09-15):** a "Save view" button (shown once any filter is active)
+  names the current filter set + completion and stores it (`saved_filters`, per buyer
+  per board — see *Database*); saved views list as chips at the top of the popover,
+  click to apply, delete on hover. Separate from the auto-remembered "last state" below
+  — a saved view is named and intentional, "last state" is just what you left it on.
+  **Last-used view/sort/filters are remembered per buyer, per board, server-side**
+  (`users.boardPrefs`, debounced from `BoardPage`) so they follow across devices —
+  the equivalent localStorage keys are now only the same-browser instant-hydration
+  fallback used before that syncs.
 
 **Views (decided 2026-08-04, reversing the earlier "no view tabs" call):** the board gets
 **three** — **List, Board, Calendar** — switched from a toggle in the toolbar. All three
@@ -705,17 +754,42 @@ My Tasks, premium prompts, mobile-responsive layout.
 
 ## Files & Images (S3)
 
-- Bucket `townsquareignite`, prefix `buyer-board/`, region `us-east-1`. **Public-read
-  for now** (planned: move to a private bucket via presigned/CloudFront later).
+- Bucket `townsquareignite`, prefix `buyer-board/`, region `us-east-1`.
 - IAM user needs `s3:PutObject, s3:GetObject, s3:DeleteObject` on `buyer-board/*`
   (`DeleteObject` is REQUIRED — used by remove-attachment and every cascade delete;
-  see *Deletion & Cleanup Rules*). Bucket CORS must allow browser `PUT`/`GET` from the
-  app origins (localhost:5173, *.vercel.app).
+  see *Deletion & Cleanup Rules*). Bucket CORS must allow browser `PUT` from the app
+  origins (localhost:5173, *.vercel.app) for uploads — reads no longer go direct to
+  S3 from the browser, so GET doesn't need a CORS entry.
 - **Two kinds of attachments:** (1) **inline images** embedded in comment/description
   HTML (`<img>` rewritten to S3 URLs); (2) **standalone files** (any type — images,
   Excel, PDF…) shown in the card's Attachments section. The `inline` flag separates them.
 - **Uploads** (native, in the rich editor): browser asks `/api/uploads/presign`, then
-  PUTs the file directly to S3 (avoids Vercel's body-size limit), stores the public URL.
+  PUTs the file directly to S3 (avoids Vercel's body-size limit).
+- **Reads go through `GET /api/files/<key>` (2026-09-15), not a raw bucket URL — the
+  bucket is meant to be private.** `server/lib/s3.js`'s `publicUrl(key)` returns
+  `/api/files/<key>` (this is what gets stored in `attachments[].url` and rewritten
+  into HTML), and `server/controllers/files.js` redirects (302) to a fresh
+  short-lived presigned GET on every request. The route sits behind the same
+  `requireAuth` as everything else under `/api`, so a signed-out browser can no
+  longer view an attachment just by having the URL — that's the actual point of
+  going private, not just an implementation detail. `<img src>` / `<a href>` need no
+  client changes: a relative path + a redirect works exactly like a direct URL did.
+  `keyFromUrl()` recognizes BOTH the old raw-host form and the current proxy form, so
+  `deleteByUrl`/`s3UrlsInHtml` (cleanup, cascades) keep working on records from either
+  era without a hard migration cutover.
+- **`migration/rewrite-s3-urls.js`** rewrites every already-stored raw-bucket-host URL
+  (`attachments[].url`, `descriptionHtml`, `notesHtml`, `bodyHtml`) to the proxy form —
+  a one-time, idempotent, dry-run-by-default string rewrite (keys/objects never move).
+  **Run it AFTER deploying the `/api/files` proxy and BEFORE actually locking the
+  bucket down** (Block Public Access + a policy restricting reads to the app's IAM
+  user) — the sequencing matters: the proxy has to already resolve real requests
+  before public access is removed, or every existing image 403s in the gap.
+  **As of 2026-09-15 the proxy code is deployed but the bucket itself is still
+  public and the rewrite has NOT been run against production** — dry run measured
+  1,483 cards, 174 card descriptions, 998 subtasks, and 8,218 comments containing a
+  raw-host URL. Both the `--apply` run and the actual AWS bucket lockdown are
+  pending deliberate confirmation (see the go-live runsheet) — don't run either
+  without checking whether that's still the case.
 
 ---
 
@@ -1072,11 +1146,15 @@ Current cascade/cleanup per entity:
 - **Field**: after deleting the field doc, `$pull` its `fieldValues` from every card so no
   orphaned values remain. (No files.)
 - **Template**: no children/files.
+- **Saved filter**: owner-only delete, no children/files.
 - **Board** (cascade; deletable only when empty OR archived): delete all `cards`,
-  `subtasks`, `comments`, `columns`, `custom_fields`, `card_templates`; S3-delete every
-  card attachment + inline image (descriptions AND comments, card and subtask alike, since
-  subtask comments carry `cardId`) **and every subtask attachment + `notesHtml` image** —
-  subtasks own files of their own, which leaked before 2026-08-05; then the board doc.
+  `subtasks`, `comments`, `columns`, `custom_fields`, `card_templates`, `saved_filters`;
+  S3-delete every card attachment + inline image (descriptions AND comments, card and
+  subtask alike, since subtask comments carry `cardId`) **and every subtask attachment +
+  `notesHtml` image** — subtasks own files of their own, which leaked before 2026-08-05;
+  then the board doc. (`users.boardPrefs.<boardId>` is left behind on purpose — it's a
+  few KB on the user doc, not a file or a growing collection, and cleaning it up isn't
+  worth a write to every user on every board delete.)
 
 **Rule for the future — keep this current:** any NEW per-board collection, child entity,
 or file-bearing field MUST be wired into (a) its own delete path and (b) the **board
@@ -1182,7 +1260,9 @@ All route handlers try/catch → central error middleware; error shape
   before SSO: start writing an `activity` collection server-side (one write per mutating
   controller, no UI), and build the tabs later on real history.
 - **Import Asana task templates** (templates are not exported/seeded yet).
-- **Private S3 bucket** via presigned/CloudFront (currently public).
+- **Private S3 bucket — code is BUILT, cutover is NOT done** (2026-09-15): see *Files &
+  Images (S3)*. `/api/files` proxy + the `rewrite-s3-urls.js` migration exist; the
+  bucket is still public and the migration hasn't been applied to production.
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during
   transition; (2) Optimization Note assistant — format a buyer's note + suggest health/
   follow-up; (3) Account Health summary — summarize a card's comment history. All would

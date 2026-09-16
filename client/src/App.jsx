@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { AppProvider } from './context/AppContext';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthWall from './components/common/AuthWall';
 import Sidebar from './components/common/Sidebar';
 import BoardListPage from './pages/BoardListPage';
@@ -16,6 +16,13 @@ import { getLastBoardId } from './utils/lastBoard';
 function HomeRedirect() {
   const lastBoardId = getLastBoardId();
   return <Navigate to={lastBoardId ? `/boards/${lastBoardId}` : '/dashboard'} replace />;
+}
+
+// Admin-only page: a real member, or an admin previewing as one, is bounced home
+// rather than shown a page whose every action would 403.
+function AdminOnly({ children }) {
+  const { isAdmin } = useAuth();
+  return isAdmin ? children : <Navigate to="/dashboard" replace />;
 }
 
 function SidebarLayout() {
@@ -44,7 +51,7 @@ export default function App() {
               <Route path="/dashboard" element={<BoardListPage />} />
               <Route path="/boards/:id" element={<BoardPage />} />
               <Route path="/boards/:id/settings" element={<BoardSettingsPage />} />
-              <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/users" element={<AdminOnly><AdminUsersPage /></AdminOnly>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

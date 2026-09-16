@@ -28,7 +28,9 @@ app.use('/api/comments', require('./routes/comments'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/uploads', require('./routes/uploads'));
+app.use('/api/files', require('./routes/files'));
 app.use('/api/lumina', require('./routes/lumina'));
+app.use('/api/saved-filters', require('./routes/savedFilters'));
 
 // Health check (no auth)
 app.get('/health', (req, res) => res.json({ ok: true }));

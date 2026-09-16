@@ -4,11 +4,13 @@ import {
   getBoardLuminaFieldSettings, saveBoardLuminaFieldSettings, resetBoardLuminaFieldSettings,
 } from '../../api/settings';
 import LuminaFieldPicker from '../../components/settings/LuminaFieldPicker';
+import { useAuth } from '../../context/AuthContext';
 
 // Which Lumina fields show on this board's cards. Purely per-board — no global
 // fallback. Absent selection means "show everything".
 
 export default function LuminaTab({ boardId }) {
+  const { isAdmin } = useAuth();
   const [catalog, setCatalog] = useState(null);
   const [adv, setAdv] = useState([]);
   const [li, setLi] = useState([]);
@@ -88,12 +90,22 @@ export default function LuminaTab({ boardId }) {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <LuminaFieldPicker catalog={catalog} adv={adv} setAdv={setAdv} li={li} setLi={setLi} />
+      <Box sx={!isAdmin ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
+        <LuminaFieldPicker catalog={catalog} adv={adv} setAdv={setAdv} li={li} setLi={setLi} />
+      </Box>
 
       <Divider sx={{ mb: 2 }} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Button variant="contained" onClick={save} disabled={saving}>Save</Button>
-        <Button onClick={showEverything} disabled={saving || isDefault}>Show everything</Button>
+        {isAdmin ? (
+          <>
+            <Button variant="contained" onClick={save} disabled={saving}>Save</Button>
+            <Button onClick={showEverything} disabled={saving || isDefault}>Show everything</Button>
+          </>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            Only admins can change which Lumina fields this board shows.
+          </Typography>
+        )}
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" color="text.secondary">
           {adv.length + li.length} field{adv.length + li.length === 1 ? '' : 's'} selected

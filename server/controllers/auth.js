@@ -37,9 +37,13 @@ async function upsertUser(email, name, microsoftId) {
   // role lives in $set when admin (above) — putting it in BOTH $set and
   // $setOnInsert on the same upsert is a MongoDB ConflictingUpdateOperators error,
   // so $setOnInsert only supplies it for the non-admin case.
+  // Default new users to admin (2026-09-15, go-live): nobody should be blocked
+  // mid-rollout by a permission they don't yet know exists. Buyers/leads decide who
+  // gets demoted to member afterward, in Admin > Users. Revisit once the team is
+  // past the initial rollout and member is the sane default again.
   return users.findOneAndUpdate(
     { email },
-    { $set, $setOnInsert: { email, createdAt: new Date(), ...(!isAdmin && { role: 'member' }) } },
+    { $set, $setOnInsert: { email, createdAt: new Date(), ...(!isAdmin && { role: 'admin' }) } },
     { upsert: true, returnDocument: 'after' }
   );
 }

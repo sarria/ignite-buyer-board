@@ -29,6 +29,7 @@ import RichTextField from '../common/RichTextField';
 import Collapsible from '../common/Collapsible';
 import DueDatePicker from '../common/DueDatePicker';
 import { tagSolid } from '../../utils/tagColor';
+import { useAuth } from '../../context/AuthContext';
 
 const DRAWER_WIDTH_DEFAULT = 560;
 const DRAWER_WIDTH_MIN = 420;
@@ -111,6 +112,7 @@ function CardTitle({ title, completed, readOnly, onSave }) {
 }
 
 export default function CardDrawer({ cardId, open, onClose, board, columns, fields, users, templates = [], allTags = [], onCardUpdate, onCardDelete, onCardMove }) {
+  const { isAdmin } = useAuth();
   const [card, setCard] = useState(null);
   const [comments, setComments] = useState([]);
   const [subtasks, setSubtasks] = useState([]);
@@ -449,7 +451,7 @@ export default function CardDrawer({ cardId, open, onClose, board, columns, fiel
                   {card.isArchived ? <UnarchiveIcon fontSize="small" /> : <ArchiveIcon fontSize="small" />}
                 </IconButton>
               </Tooltip>
-              {isCardEmpty && !readOnly && (
+              {isCardEmpty && !readOnly && isAdmin && (
                 <Tooltip title="Delete card">
                   <IconButton onClick={handleDelete} size="small" sx={{ color: 'error.main' }}>
                     <DeleteIcon fontSize="small" />

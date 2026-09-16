@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useTransition } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, useTransition } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, CircularProgress, TextField,
@@ -31,12 +31,15 @@ import { cardMatchesFilters, matchesCompletion, EMPTY_FILTERS } from '../utils/c
 import { SORT_NONE, sortCards } from '../utils/cardSort';
 import CardDrawer from '../components/Card/CardDrawer';
 import { getBoard, updateBoard } from '../api/boards';
+import { useAuth } from '../context/AuthContext';
+import { updateMyBoardPrefs } from '../api/users';
 import { getCards, getCardCounts, createCard, moveCard, reorderCards, updateCard, setCardFields } from '../api/cards';
 import { reorderColumns } from '../api/columns';
 import { getTemplates, applyTemplate } from '../api/templates';
 import api from '../api/client';
 import { useApp } from '../context/AppContext';
 import { setLastBoardId, clearLastBoardId } from '../utils/lastBoard';
+import { addRecentBoardId } from '../utils/recentBoards';
 import {
   getBoardSnapshot, setBoardSnapshot, clearBoardSnapshot,
   getUsersCache, setUsersCache,
@@ -57,11 +60,15 @@ function SkeletonColumn() {
 }
 
 // Click-to-edit board title in the top bar (borderless until hover, like the drawer).
-function EditableBoardTitle({ name, onSave }) {
+function EditableBoardTitle({ name, onSave, editable }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(name);
 
   const titleSx = { fontSize: '1.0625rem', fontWeight: 600, whiteSpace: 'nowrap' };
+
+  if (!editable) {
+    return <Typography sx={{ ...titleSx, px: 0.75, mr: 0.25 }}>{name}</Typography>;
+  }
 
   const save = async () => {
     const trimmed = val.trim();
@@ -102,6 +109,18 @@ export default function BoardPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { mode, toggleTheme } = useApp();
+  const { isAdmin, user, setBoardPrefsLocal } = useAuth();
+  // Read inside the board-switch effect below WITHOUT depending on `user` — the
+  // debounced save further down calls setBoardPrefsLocal after every save, which
+  // would otherwise re-fire that effect and stomp whatever the buyer is mid-typing
+  // (e.g. the search box) back to the value that was just saved.
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+  // The buyer's own remembered view/sort/filters for THIS board, synced server-side
+  // (see the debounced effect below) so they follow across devices — localStorage
+  // is only the same-browser instant-hydration fallback for someone who had this
+  // open before the sync existed, or before boardPrefs finishes loading.
+  const boardPrefs = user?.boardPrefs?.[id];
 
   // Hydrate synchronously from the cache so returning to a board is instant
   // (no skeleton flash). These initializers run once on mount.
@@ -115,9 +134,10 @@ export default function BoardPage() {
   const [error, setError] = useState(null);
   // All filters in ONE object (see utils/cardFilters) so views, the popover and the
   // predicate can't drift. Completion stays separate: the archive view ignores it.
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
-  // Defaults to 'all': buyers want the whole board, not a filtered slice, on arrival.
-  const [completedFilter, setCompletedFilter] = useState('all'); // incomplete | all | completed
+  const [filters, setFilters] = useState(() => (boardPrefs?.filters ? { ...EMPTY_FILTERS, ...boardPrefs.filters } : EMPTY_FILTERS));
+  // Defaults to 'all': buyers want the whole board, not a filtered slice, on arrival —
+  // unless this buyer left it narrowed last time they were on this board.
+  const [completedFilter, setCompletedFilter] = useState(boardPrefs?.completedFilter ?? 'all'); // incomplete | all | completed
   const [activeCard, setActiveCard] = useState(null);
   const [activeColumnId, setActiveColumnId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -131,14 +151,17 @@ export default function BoardPage() {
   const [view, setView] = useState(() => {
     const fromUrl = searchParams.get('view');
     if (['list', 'board', 'calendar'].includes(fromUrl)) return fromUrl;
+    if (boardPrefs?.view) return boardPrefs.view;
     try { return localStorage.getItem(`board.view.${id}`) || 'board'; } catch { return 'board'; }
   });
   // Sort: one active field + direction, remembered per board (Asana's "Sort" menu).
   // 'manual' (drag order) is the default and the only mode where drag reordering works.
   const [sortBy, setSortBy] = useState(() => {
+    if (boardPrefs?.sortBy) return boardPrefs.sortBy;
     try { return localStorage.getItem(`board.sortBy.${id}`) || SORT_NONE; } catch { return SORT_NONE; }
   });
   const [sortDir, setSortDir] = useState(() => {
+    if (boardPrefs?.sortDir) return boardPrefs.sortDir;
     try { return localStorage.getItem(`board.sortDir.${id}`) || 'asc'; } catch { return 'asc'; }
   });
   const handleSortChange = (by, dir) => {
@@ -149,6 +172,38 @@ export default function BoardPage() {
       localStorage.setItem(`board.sortDir.${id}`, dir);
     } catch { /* ignore */ }
   };
+
+  // Switching boards from the sidebar reuses THIS SAME component instance — only the
+  // `:id` route param changes, so the `useState(() => ...)` initializers above never
+  // re-run. Without this, filters/sort/view visibly carried over from whichever board
+  // you were on before, which looked exactly like "remembered per user, shared across
+  // every board" even though the underlying storage (boardPrefs) was already keyed
+  // per board all along. Deliberately keyed on `id` alone (via userRef, not `user`
+  // directly) — see userRef's own comment above.
+  useEffect(() => {
+    const prefs = userRef.current?.boardPrefs?.[id];
+    setFilters(prefs?.filters ? { ...EMPTY_FILTERS, ...prefs.filters } : EMPTY_FILTERS);
+    setCompletedFilter(prefs?.completedFilter ?? 'all');
+
+    const fromUrl = new URLSearchParams(window.location.search).get('view');
+    if (['list', 'board', 'calendar'].includes(fromUrl)) {
+      setView(fromUrl);
+    } else if (prefs?.view) {
+      setView(prefs.view);
+    } else {
+      try { setView(localStorage.getItem(`board.view.${id}`) || 'board'); } catch { setView('board'); }
+    }
+
+    if (prefs?.sortBy) setSortBy(prefs.sortBy);
+    else {
+      try { setSortBy(localStorage.getItem(`board.sortBy.${id}`) || SORT_NONE); } catch { setSortBy(SORT_NONE); }
+    }
+    if (prefs?.sortDir) setSortDir(prefs.sortDir);
+    else {
+      try { setSortDir(localStorage.getItem(`board.sortDir.${id}`) || 'asc'); } catch { setSortDir('asc'); }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Bumped by the top-bar "Add task". Each view watches it and opens ITS OWN inline
   // composer — first group in List, first column on the Board, today's cell in Calendar —
@@ -192,6 +247,7 @@ export default function BoardPage() {
         if (cancelled) return;
         setBoard(boardData);
         setLastBoardId(id);
+        addRecentBoardId(id);
         setColumns(boardData.columns || []);
       })
       .catch(e => {
@@ -249,6 +305,21 @@ export default function BoardPage() {
       return next;
     }, { replace: true });
   }, [view, id, setSearchParams]);
+
+  // Mirror view/sort/filters to the user's own record (server), debounced, so they
+  // follow a buyer across devices instead of just this browser — localStorage above
+  // is the instant-hydration cache, this is the source of truth. Skipped until the
+  // board id we're saving under matches the one we're actually looking at, for the
+  // same board-switch race the snapshot-write effect below guards against.
+  useEffect(() => {
+    if (!board || board._id?.toString() !== id?.toString()) return undefined;
+    const timeout = setTimeout(() => {
+      updateMyBoardPrefs(id, { view, sortBy, sortDir, filters, completedFilter })
+        .then(updated => setBoardPrefsLocal(id, updated.boardPrefs?.[id]))
+        .catch(() => { /* best-effort — localStorage already has it for this browser */ });
+    }, 700);
+    return () => clearTimeout(timeout);
+  }, [id, board, view, sortBy, sortDir, filters, completedFilter, setBoardPrefsLocal]);
 
   // Guard on board._id === id: during a board→board switch the id dep changes a
   // render before the state does, and we must not write the old board under the new key.
@@ -513,7 +584,7 @@ export default function BoardPage() {
         bgcolor: 'background.paper', flexShrink: 0,
       }}>
         {board
-          ? <EditableBoardTitle name={board.name} onSave={handleRenameBoard} />
+          ? <EditableBoardTitle name={board.name} onSave={handleRenameBoard} editable={isAdmin} />
           : <Skeleton variant="text" width={180} sx={{ fontSize: '1.0625rem', mr: 0.25 }} />}
 
         <Divider orientation="vertical" flexItem sx={{ mx: 0.75, my: 0.75 }} />
@@ -542,6 +613,7 @@ export default function BoardPage() {
         )}
 
         <BoardFilters
+          boardId={id}
           filters={filters}
           onChange={setFilters}
           completion={completedFilter}
@@ -632,9 +704,11 @@ export default function BoardPage() {
           <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 600 }}>
             This board is archived — hidden from the sidebar and dashboard.
           </Typography>
-          <Button size="small" startIcon={<UnarchiveIcon />} onClick={handleUnarchiveBoard} sx={{ ml: 'auto' }}>
-            Unarchive
-          </Button>
+          {isAdmin && (
+            <Button size="small" startIcon={<UnarchiveIcon />} onClick={handleUnarchiveBoard} sx={{ ml: 'auto' }}>
+              Unarchive
+            </Button>
+          )}
         </Box>
       )}
 

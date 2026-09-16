@@ -9,6 +9,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import HomeIcon from '@mui/icons-material/Home';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import LogoutIcon from '@mui/icons-material/Logout';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { getBoards } from '../../api/boards';
 import { useAuth } from '../../context/AuthContext';
 import { userColor } from '../../utils/userColor';
@@ -29,7 +30,7 @@ export default function Sidebar() {
   const isHome = location.pathname === '/dashboard';
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin, isRealAdmin, previewAsMember, togglePreviewAsMember } = useAuth();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
@@ -107,7 +108,7 @@ export default function Sidebar() {
 
   const currentWidth = collapsed ? WIDTH_COLLAPSED : width;
   const displayName = user?.name || user?.email || 'Signed in';
-  const roleLabel = user?.role === 'admin' ? 'Admin' : 'Member';
+  const roleLabel = previewAsMember ? 'Member (preview)' : (user?.role === 'admin' ? 'Admin' : 'Member');
 
   return (
     <Box
@@ -248,19 +249,41 @@ export default function Sidebar() {
         <Box sx={{ flex: 1 }} />
 
         {/* Admin section */}
-        <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-        <Box sx={{ px: 1, py: 1 }}>
-          <Tooltip title="Users" placement="right" disableHoverListener={!collapsed}>
-            <Box onClick={() => navigate('/admin/users')} sx={navRowSx(isUsers)}>
-              <PeopleIcon sx={{ fontSize: 18, color: isUsers ? '#fff' : 'rgba(255,255,255,0.5)', flexShrink: 0 }} />
-              {!collapsed && (
-                <Typography variant="body2" noWrap sx={{ color: isUsers ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 13 }}>
-                  Users
-                </Typography>
-              )}
-            </Box>
-          </Tooltip>
-        </Box>
+        {(isAdmin || isRealAdmin) && <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />}
+        {isAdmin && (
+          <Box sx={{ px: 1, py: 1 }}>
+            <Tooltip title="Users" placement="right" disableHoverListener={!collapsed}>
+              <Box onClick={() => navigate('/admin/users')} sx={navRowSx(isUsers)}>
+                <PeopleIcon sx={{ fontSize: 18, color: isUsers ? '#fff' : 'rgba(255,255,255,0.5)', flexShrink: 0 }} />
+                {!collapsed && (
+                  <Typography variant="body2" noWrap sx={{ color: isUsers ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+                    Users
+                  </Typography>
+                )}
+              </Box>
+            </Tooltip>
+          </Box>
+        )}
+        {/* Preview-as-member toggle: real admins only, visible in both directions so
+            turning it back off doesn't require re-finding a hidden control. */}
+        {isRealAdmin && (
+          <Box sx={{ px: 1, pb: 1 }}>
+            <Tooltip
+              title={previewAsMember ? 'Stop previewing as a member' : 'Preview as a member'}
+              placement="right"
+              disableHoverListener={!collapsed}
+            >
+              <Box onClick={togglePreviewAsMember} sx={navRowSx(previewAsMember)}>
+                <VisibilityIcon sx={{ fontSize: 18, color: previewAsMember ? '#fff' : 'rgba(255,255,255,0.5)', flexShrink: 0 }} />
+                {!collapsed && (
+                  <Typography variant="body2" noWrap sx={{ color: previewAsMember ? '#fff' : 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+                    {previewAsMember ? 'Previewing as member' : 'Preview as member'}
+                  </Typography>
+                )}
+              </Box>
+            </Tooltip>
+          </Box>
+        )}
 
         {/* Bottom user area */}
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
