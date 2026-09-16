@@ -28,6 +28,10 @@ export function AuthProvider({ children }) {
   }, []);
   const isRealAdmin = user?.role === 'admin';
   const isAdmin = isRealAdmin && !previewAsMember;
+  // The user-merge tool is ours, not a board admin's — gated separately from role,
+  // since every new user currently defaults to admin (see server auth.js
+  // upsertUser). Also respects previewAsMember so it disappears in that preview.
+  const isSuperAdmin = !!user?.isSuperAdmin && !previewAsMember;
 
   const refresh = useCallback(async () => {
     try {
@@ -68,7 +72,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       status, user, signIn, signOut: clearSession, refresh, setBoardPrefsLocal,
-      isAdmin, isRealAdmin, previewAsMember, togglePreviewAsMember,
+      isAdmin, isRealAdmin, isSuperAdmin, previewAsMember, togglePreviewAsMember,
     }}>
       {children}
     </AuthContext.Provider>

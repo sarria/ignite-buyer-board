@@ -3,6 +3,7 @@
 const { getDb } = require('../db');
 const { signToken } = require('../lib/appToken');
 const { SCOPES, isMsalConfigured, getMsalClient, getRedirectUri, getClientUrl } = require('../lib/msal');
+const { isSuperAdminEmail } = require('../middleware/auth');
 
 function listEnv(name) {
   return (process.env[name] || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -101,8 +102,14 @@ async function callback(req, res) {
 }
 
 // GET /api/auth/me — behind requireAuth, so reaching it means the token is valid.
+// `isSuperAdmin` is computed here, not stored on the user doc, so the client can
+// gate super-admin-only UI (the user-merge tool) without duplicating the
+// SUPER_ADMIN_EMAILS allowlist.
 async function me(req, res) {
-  res.json({ user: req.user, ssoEnabled: isMsalConfigured() });
+  res.json({
+    user: { ...req.user, isSuperAdmin: isSuperAdminEmail(req.user.email) },
+    ssoEnabled: isMsalConfigured(),
+  });
 }
 
 // GET /api/auth/config — public: lets the login screen explain itself when SSO

@@ -277,6 +277,15 @@ on every request.
   one entry — and once rollout is over and the default flips back to `member` —
   nobody could create/delete boards, manage users, delete cards or comments, or set a
   board's Lumina fields.
+- **`SUPER_ADMIN_EMAILS` is a tier above `admin`**, for tools meant for whoever runs
+  this app, not for buyers/leads — currently just the user-merge tool
+  (`POST /users/:id/merge`, `requireSuperAdmin` in `server/middleware/auth.js`),
+  which fixes identity-matching problems (duplicate users from an email mismatch —
+  see the go-live plan). Separate from `ADMIN_EMAILS` on purpose: every new user
+  currently defaults to `role: 'admin'` (above), so gating this on role alone would
+  hand it to every buyer. `GET /auth/me` computes `user.isSuperAdmin` from this list
+  (not stored on the user doc) so the client can hide the merge icon/dialog
+  entirely for everyone else, not just 403 the request.
 - `ALLOWED_EMAIL_DOMAINS` restricts sign-in to Townsquare domains; blank = any account in
   the tenant.
 - **Redirect URI is derived from the request host** (`<origin>/api/auth/callback`), so one
@@ -327,6 +336,7 @@ MSAL_REDIRECT_URI=           # optional — normally derived from the request ho
 MSAL_SCOPES=                 # optional, comma-separated. Default: user.read
 ALLOWED_EMAIL_DOMAINS=       # comma-separated; blank = any account in the tenant
 ADMIN_EMAILS=                # comma-separated; promoted to admin on sign-in
+SUPER_ADMIN_EMAILS=          # comma-separated; gates the user-merge tool only (see Auth)
 PUBLIC_PROTO=                # 'https' when TLS terminates upstream (k8s ingress)
 JWT_SECRET=                  # signs our session token; rotating it signs everyone out
 JWT_TTL_SECONDS=             # optional, default 5 days

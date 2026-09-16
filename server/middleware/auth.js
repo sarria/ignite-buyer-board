@@ -17,6 +17,24 @@ function unauthorized(res, message = 'Sign-in required') {
   return res.status(401).json({ error: { message, code: 'UNAUTHORIZED' } });
 }
 
+// A tier above `admin`, for tools meant for the person running this app, not for
+// buyers/leads — e.g. the user-merge tool: it fixes an identity-matching problem
+// that's ours to solve, not something a board admin should reach for. Every new
+// user currently defaults to `role: 'admin'` (see auth.js upsertUser), so gating
+// on role alone would hand this to everyone. `SUPER_ADMIN_EMAILS` is a separate,
+// explicit allowlist, same pattern as `ADMIN_EMAILS`.
+function isSuperAdminEmail(email) {
+  const list = (process.env.SUPER_ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return list.includes((email || '').toLowerCase());
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (!isSuperAdminEmail(req.user?.email)) {
+    return res.status(403).json({ error: { message: 'Not allowed', code: 'FORBIDDEN' } });
+  }
+  next();
+}
+
 // Microsoft SSO. The SPA sends `Authorization: Bearer <our jwt>`; we verify the
 // signature and then re-read the user from Mongo, so role changes and
 // deactivation take effect immediately instead of waiting out a 5-day token.
@@ -60,4 +78,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, requireAdmin, requireSuperAdmin, isSuperAdminEmail };

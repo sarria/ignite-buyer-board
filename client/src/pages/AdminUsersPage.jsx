@@ -13,6 +13,7 @@ import CallMergeIcon from '@mui/icons-material/CallMerge';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleAltOutlined';
 import { getUsers, createUser, updateUser, deleteUser, mergeUser } from '../api/users';
 import { userColor } from '../utils/userColor';
+import { useAuth } from '../context/AuthContext';
 
 const SORT_OPTIONS = [
   { value: 'name', label: 'Name (A-Z)' },
@@ -141,11 +142,13 @@ function UserRow({ user, divider, onUpdate, onDeactivate, onReactivate, onMerge 
 
         {/* Actions */}
         <Box className="row-actions" sx={{ opacity: { xs: 1, sm: 0 }, transition: 'opacity 0.15s', display: 'flex' }}>
-          <Tooltip title="Merge into another user (reassign their cards, comments, etc.)">
-            <IconButton size="small" onClick={() => onMerge(user)}>
-              <CallMergeIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          {onMerge && (
+            <Tooltip title="Merge into another user (reassign their cards, comments, etc.)">
+              <IconButton size="small" onClick={() => onMerge(user)}>
+                <CallMergeIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           {deactivated ? (
             <Tooltip title="Reactivate user">
               <IconButton size="small" onClick={() => onReactivate(user)}>
@@ -166,6 +169,7 @@ function UserRow({ user, divider, onUpdate, onDeactivate, onReactivate, onMerge 
 }
 
 export default function AdminUsersPage() {
+  const { isSuperAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -297,7 +301,7 @@ export default function AdminUsersPage() {
                 onUpdate={handleUpdate}
                 onDeactivate={setDeactivateTarget}
                 onReactivate={handleReactivate}
-                onMerge={setMergeTarget}
+                onMerge={isSuperAdmin ? setMergeTarget : undefined}
               />
             ))
           )}
@@ -318,7 +322,7 @@ export default function AdminUsersPage() {
                   onUpdate={handleUpdate}
                   onDeactivate={setDeactivateTarget}
                   onReactivate={handleReactivate}
-                  onMerge={setMergeTarget}
+                  onMerge={isSuperAdmin ? setMergeTarget : undefined}
                 />
               ))}
             </Paper>
