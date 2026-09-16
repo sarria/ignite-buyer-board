@@ -11,26 +11,18 @@ const PREFIX = process.env.S3_PREFIX || 'buyer-board/';
 const s3Enabled = Boolean(REGION && BUCKET);
 const s3 = s3Enabled ? new S3Client({ region: REGION }) : null;
 
-// A private-bucket read proxy exists (server/controllers/files.js, GET /api/files/<key>)
-// but is NOT wired in as the default yet — see the big warning below. `publicUrl()`
-// still returns the raw bucket URL, exactly as before, because the bucket itself is
-// still public and this is what actually works today.
-//
-// **DO NOT flip `publicUrl()` to PROXY_BASE without fixing this first:** the proxy
-// sits behind `requireAuth`, which only reads the `Authorization: Bearer` header our
-// axios client attaches — a plain `<img src>`/`<a href>` is fetched natively by the
-// browser with NO custom header, so it 401s. This was tried on 2026-09-15 and broke
-// every image on the board within minutes (reverted same day). Before retrying: add
-// a way for the proxy to authenticate a plain resource request — e.g. accept a
-// `?token=<jwt>` query param on this one route AND have every render path
-// (RichContent, Attachments, RichEditor's own preview) append the current token when
-// building the URL — then flip this function, deploy, run the DB rewrite, and only
-// THEN lock the bucket down in AWS. See [[s3-private-bucket-cutover]] in memory.
+// Private-bucket read proxy (server/controllers/files.js, GET /api/files/<key>),
+// now the default `publicUrl()`. The proxy sits behind `requireAuth`, which reads
+// either the `Authorization: Bearer` header (axios calls) or a `?token=` query
+// param (plain <img src>/<a href>, appended client-side by
+// client/src/utils/fileUrl.js) — an earlier attempt (2026-09-15) flipped this
+// without the query-param fallback and broke every image within minutes. Do not
+// remove that fallback.
 const RAW_BASE = `https://${BUCKET}.s3.${REGION}.amazonaws.com/`;
 const PROXY_BASE = '/api/files/';
 
 function publicUrl(key) {
-  return `${RAW_BASE}${key}`;
+  return `${PROXY_BASE}${key}`;
 }
 
 // The literal S3 key from either URL form we've ever stored. Null for anything else

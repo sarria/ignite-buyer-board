@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Box } from '@mui/material';
 import DOMPurify from 'dompurify';
+import { withFileAuth } from '../../utils/fileUrl';
 
 // Render migrated Asana rich text (comment html / description html) safely.
 // Inline <img> are kept (already rewritten to S3 URLs at migration time) and get a
@@ -34,13 +35,16 @@ export default function RichContent({ html, sx }) {
     // unsaved editor state) to visit Lumina/DCM/GTM. mailto: is left alone —
     // opening a blank tab to hand off to a mail client is just litter.
     c = withNewTabLinks(c);
-    // Wrap each image so we can show a download/open button on hover.
+    // Wrap each image so we can show a download/open button on hover. The private-S3
+    // proxy needs the session token as a query param on a plain <img src>/<a href>.
     c = c.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
       const src = attrs.match(/src="([^"]*)"/)?.[1] || '';
+      const authedSrc = withFileAuth(src);
+      const rewritten = src ? attrs.replace(src, authedSrc) : attrs;
       const dl = src
-        ? `<a class="rc-dl" href="${src}" target="_blank" rel="noopener noreferrer" title="Open image">↓</a>`
+        ? `<a class="rc-dl" href="${authedSrc}" target="_blank" rel="noopener noreferrer" title="Open image">↓</a>`
         : '';
-      return `<span class="rc-img"><img ${attrs} loading="lazy"/>${dl}</span>`;
+      return `<span class="rc-img"><img ${rewritten} loading="lazy"/>${dl}</span>`;
     });
     return c;
   }, [html]);

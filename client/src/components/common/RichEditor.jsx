@@ -11,6 +11,7 @@ import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
 import LinkIcon from '@mui/icons-material/Link';
 import ImageIcon from '@mui/icons-material/Image';
 import { uploadFile } from '../../api/uploads';
+import { withFileAuth } from '../../utils/fileUrl';
 
 // Basic rich text editor (bold, italic, lists, link, image). Images paste/drag/pick
 // → uploaded to S3 → inserted inline. Outputs HTML via onChange (same shape we render).
@@ -25,8 +26,12 @@ export default function RichEditor({ value = '', onChange, minHeight = 90 }) {
     ],
     // Asana HTML uses bare "\n" for line breaks (rendered via white-space:pre-wrap).
     // TipTap parses real HTML where newlines are insignificant, so convert them to
-    // <br> first or the content collapses into one block.
-    content: (value || '').replace(/\n/g, '<br>'),
+    // <br> first or the content collapses into one block. Existing inline images point
+    // at our private-S3 proxy, which needs the session token as a query param on a
+    // plain <img src> (see fileUrl.js) — added here for display only, stripped again
+    // before the HTML is persisted (RichTextField.submit).
+    content: (value || '').replace(/\n/g, '<br>').replace(/<img\b([^>]*)\bsrc="([^"]*)"/gi,
+      (full, pre, src) => `<img ${pre}src="${withFileAuth(src)}"`),
     onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
     editorProps: {
       handlePaste: (_v, e) => handleFiles(e.clipboardData?.files),
@@ -37,7 +42,7 @@ export default function RichEditor({ value = '', onChange, minHeight = 90 }) {
   async function insertImageFile(file) {
     try {
       const url = await uploadFile(file);
-      editor?.chain().focus().setImage({ src: url }).run();
+      editor?.chain().focus().setImage({ src: withFileAuth(url) }).run();
     } catch {
       // eslint-disable-next-line no-alert
       window.alert('Image upload failed.');

@@ -32,10 +32,14 @@ function verifyToken(token) {
   return jwt.verify(token, secret());
 }
 
-// Accepts `Authorization: Bearer <jwt>`.
+// Accepts `Authorization: Bearer <jwt>`, or `?token=` as a fallback — needed for
+// GET /api/files/<key>: a plain <img src>/<a href> is fetched natively by the
+// browser with no custom header, so the private-S3 read proxy can't rely on the
+// header alone (see client/src/utils/fileUrl.js).
 function tokenFromRequest(req) {
   const header = req.get('authorization') || '';
-  return header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (header.startsWith('Bearer ')) return header.slice(7);
+  return req.query?.token || null;
 }
 
 module.exports = { signToken, verifyToken, tokenFromRequest, TTL_SECONDS };

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Box, Button } from '@mui/material';
 import RichEditor from './RichEditor';
+import { stripFileAuth } from '../../utils/fileUrl';
 
 // Empty unless there's text or an image (image-only content is allowed).
 export const hasContent = (html) =>
@@ -19,7 +20,7 @@ export default function RichTextField({
     if (!hasContent(html) || saving) return;
     setSaving(true);
     try {
-      await onSave(html);
+      await onSave(stripFileAuth(html));
     } finally {
       setSaving(false);
     }

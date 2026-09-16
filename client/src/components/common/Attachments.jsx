@@ -4,6 +4,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { uploadFile } from '../../api/uploads';
+import { withFileAuth } from '../../utils/fileUrl';
 
 // The Attachments section — 96px tiles plus a dashed "add" tile — shared by the card
 // drawer and SubtaskDialog. It was duplicated, and the copy destructured `uploadFile`'s
@@ -45,7 +46,7 @@ export default function Attachments({
             <Tooltip title={att.name || 'attachment'}>
               <Box
                 component="a"
-                href={att.url}
+                href={withFileAuth(att.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 sx={{
@@ -58,7 +59,7 @@ export default function Attachments({
                 }}
               >
                 {att.isImage ? (
-                  <Box component="img" src={att.url} alt={att.name || ''} loading="lazy"
+                  <Box component="img" src={withFileAuth(att.url)} alt={att.name || ''} loading="lazy"
                     sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 ) : (
                   <Box sx={{ textAlign: 'center', overflow: 'hidden', width: '100%' }}>

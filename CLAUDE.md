@@ -765,31 +765,39 @@ My Tasks, premium prompts, mobile-responsive layout.
   Excel, PDF…) shown in the card's Attachments section. The `inline` flag separates them.
 - **Uploads** (native, in the rich editor): browser asks `/api/uploads/presign`, then
   PUTs the file directly to S3 (avoids Vercel's body-size limit).
-- **Reads go through `GET /api/files/<key>` (2026-09-15), not a raw bucket URL — the
-  bucket is meant to be private.** `server/lib/s3.js`'s `publicUrl(key)` returns
-  `/api/files/<key>` (this is what gets stored in `attachments[].url` and rewritten
-  into HTML), and `server/controllers/files.js` redirects (302) to a fresh
-  short-lived presigned GET on every request. The route sits behind the same
-  `requireAuth` as everything else under `/api`, so a signed-out browser can no
-  longer view an attachment just by having the URL — that's the actual point of
-  going private, not just an implementation detail. `<img src>` / `<a href>` need no
-  client changes: a relative path + a redirect works exactly like a direct URL did.
-  `keyFromUrl()` recognizes BOTH the old raw-host form and the current proxy form, so
-  `deleteByUrl`/`s3UrlsInHtml` (cleanup, cascades) keep working on records from either
-  era without a hard migration cutover.
+- **Reads go through `GET /api/files/<key>`, not a raw bucket URL — the bucket is
+  meant to be private.** `server/lib/s3.js`'s `publicUrl(key)` returns `/api/files/<key>`
+  (this is what gets stored in `attachments[].url` and rewritten into HTML), and
+  `server/controllers/files.js` redirects (302) to a fresh short-lived presigned GET
+  on every request. The route sits behind the same `requireAuth` as everything else
+  under `/api`, so a signed-out browser can no longer view an attachment just by
+  having the URL.
+  **`<img src>`/`<a href>` DO need client changes — this was tried without them on
+  2026-09-15 and broke every image within minutes (reverted same day):** a plain
+  `<img>`/`<a>` is fetched natively by the browser with no `Authorization` header, so
+  `requireAuth` 401s it. Fixed by adding a `?token=` fallback: `tokenFromRequest`
+  (`server/lib/appToken.js`) accepts either the header or `req.query.token`, and
+  `client/src/utils/fileUrl.js` exports `withFileAuth(url)` (appends the session
+  token to a `/api/files/` URL, for display) and `stripFileAuth(html)` (removes it
+  again). Every render path that puts a stored URL into the DOM calls
+  `withFileAuth`: `RichContent` (inline comment/description images + their download
+  link), `Attachments` (thumbnail + open link), and `RichEditor` (both the initial
+  `content` load and a freshly inserted image, so it displays immediately). **The
+  authed src must never reach the database** — `RichTextField.submit()` is the one
+  chokepoint every rich editor save passes through, and calls `stripFileAuth(html)`
+  right before `onSave`, so a token never gets embedded in stored `descriptionHtml`/
+  `bodyHtml`/`notesHtml`. `keyFromUrl()` recognizes BOTH the old raw-host form and
+  the current proxy form, so `deleteByUrl`/`s3UrlsInHtml` (cleanup, cascades) keep
+  working on records from either era without a hard migration cutover.
 - **`migration/rewrite-s3-urls.js`** rewrites every already-stored raw-bucket-host URL
   (`attachments[].url`, `descriptionHtml`, `notesHtml`, `bodyHtml`) to the proxy form —
   a one-time, idempotent, dry-run-by-default string rewrite (keys/objects never move).
-  **Run it AFTER deploying the `/api/files` proxy and BEFORE actually locking the
-  bucket down** (Block Public Access + a policy restricting reads to the app's IAM
-  user) — the sequencing matters: the proxy has to already resolve real requests
-  before public access is removed, or every existing image 403s in the gap.
-  **As of 2026-09-15 the proxy code is deployed but the bucket itself is still
-  public and the rewrite has NOT been run against production** — dry run measured
-  1,483 cards, 174 card descriptions, 998 subtasks, and 8,218 comments containing a
-  raw-host URL. Both the `--apply` run and the actual AWS bucket lockdown are
-  pending deliberate confirmation (see the go-live runsheet) — don't run either
-  without checking whether that's still the case.
+  **Run it AFTER deploying the `/api/files` proxy (with the `?token=` fallback above)
+  and BEFORE actually locking the bucket down** (Block Public Access + a policy
+  restricting reads to the app's IAM user) — the sequencing matters: the proxy has to
+  already resolve real requests before public access is removed, or every existing
+  image 403s in the gap. Dry run measured 1,483 cards, 174 card descriptions, 998
+  subtasks, and 8,220 comments containing a raw-host URL.
 
 ---
 
@@ -1260,9 +1268,11 @@ All route handlers try/catch → central error middleware; error shape
   before SSO: start writing an `activity` collection server-side (one write per mutating
   controller, no UI), and build the tabs later on real history.
 - **Import Asana task templates** (templates are not exported/seeded yet).
-- **Private S3 bucket — code is BUILT, cutover is NOT done** (2026-09-15): see *Files &
-  Images (S3)*. `/api/files` proxy + the `rewrite-s3-urls.js` migration exist; the
-  bucket is still public and the migration hasn't been applied to production.
+- **Private S3 bucket — code is BUILT (incl. the `?token=` fix for `<img>`/`<a>`
+  reads), cutover is NOT done** (2026-09-16): see *Files & Images (S3)*. Still
+  pending: deploy → verify images still load → run `rewrite-s3-urls.js --apply`
+  against production Mongo → lock the bucket down in AWS (Block Public Access +
+  IAM-only read policy) → verify again.
 - **AI agents (Anthropic SDK), not built:** (1) Asana Sync — keep cards in sync during
   transition; (2) Optimization Note assistant — format a buyer's note + suggest health/
   follow-up; (3) Account Health summary — summarize a card's comment history. All would
