@@ -57,10 +57,6 @@ export default function LoginPage() {
             Single sign-on isn’t configured on this server yet.
           </Alert>
         )}
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>
-          Single sign-on via Microsoft Entra ID
-        </Typography>
       </Paper>
     </Box>
   );
